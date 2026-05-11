@@ -72,7 +72,11 @@ function TvPage() {
     // =========================
 
     socket.onopen = () => {
-      console.log("TV SOCKET CONNECTED")
+
+      console.log(
+        "TV SOCKET CONNECTED"
+      )
+
     }
 
     // =========================
@@ -83,17 +87,26 @@ function TvPage() {
 
       try {
 
-        const data = JSON.parse(event.data)
+        const data =
+          JSON.parse(event.data)
 
-        if (data.type === "LOAD_VIDEO") {
+        if (
+          data.type ===
+          "LOAD_VIDEO"
+        ) {
 
           setVideoReady(false)
 
-          setCurrentSong(data.song)
+          setCurrentSong(
+            data.song
+          )
 
         }
 
-        if (data.type === "STOP_VIDEO") {
+        if (
+          data.type ===
+          "STOP_VIDEO"
+        ) {
 
           setCurrentSong(null)
 
@@ -368,46 +381,122 @@ function TvPage() {
             flex-col
             items-center
             justify-center
-            bg-black
+            bg-gradient-to-br
+            from-black
+            via-zinc-950
+            to-cyan-950
+            overflow-hidden
           "
         >
 
+          {/* GLOW */}
           <div
             className="
-              w-80
-              h-80
-              bg-white
-              rounded-3xl
+              absolute
+              w-[700px]
+              h-[700px]
+              bg-cyan-500/10
+              blur-3xl
+              rounded-full
+            "
+          />
+
+          {/* CONTENT */}
+          <div
+            className="
+              relative
+              z-10
               flex
+              flex-col
               items-center
-              justify-center
-              overflow-hidden
-              p-5
             "
           >
 
-            {qrUrl && (
+            {/* LOGO */}
+            <h1
+              className="
+                text-7xl
+                font-black
+                tracking-tight
+                text-white
+                drop-shadow-2xl
+              "
+            >
+              MK
+              <span
+                className="
+                  text-cyan-400
+                "
+              >
+                ARAOKE
+              </span>
+            </h1>
 
-              <QRCodeCanvas
-                key={qrUrl}
-                value={qrUrl}
-                size={280}
-              />
+            <p
+              className="
+                text-zinc-400
+                text-xl
+                mt-3
+                mb-10
+                font-medium
+              "
+            >
+              Escanea y agrega tu canción
+            </p>
 
-            )}
+            {/* QR CONTAINER */}
+            <div
+              className="
+                relative
+                bg-white
+                rounded-[2.5rem]
+                p-7
+                shadow-[0_0_80px_rgba(34,211,238,0.25)]
+                border
+                border-white/40
+              "
+            >
+
+              {qrUrl && (
+
+                <QRCodeCanvas
+                  key={qrUrl}
+                  value={qrUrl}
+                  size={320}
+                />
+
+              )}
+
+            </div>
+
+            {/* CTA */}
+            <div
+              className="
+                mt-8
+                px-6
+                py-3
+                rounded-2xl
+                bg-cyan-500/10
+                border
+                border-cyan-400/20
+                backdrop-blur-xl
+              "
+            >
+
+              <p
+                className="
+                  text-cyan-300
+                  text-lg
+                  font-semibold
+                  tracking-wide
+                "
+              >
+                Escanea para cantar
+              </p>
+
+            </div>
 
           </div>
-
-          <h1
-            className="
-              text-6xl
-              font-black
-              mt-10
-              text-cyan-400
-            "
-          >
-            MK
-          </h1>
 
         </div>
 
@@ -478,26 +567,20 @@ function TvPage() {
             absolute
             bottom-5
             right-5
-            bg-zinc-900/90
+            bg-black/70
             border
-            border-zinc-700
+            border-cyan-500/20
             rounded-3xl
             p-4
-            backdrop-blur-xl
+            backdrop-blur-2xl
             shadow-2xl
           "
         >
 
           <div
             className="
-              w-32
-              h-32
-              rounded-2xl
               bg-white
-              flex
-              items-center
-              justify-center
-              overflow-hidden
+              rounded-2xl
               p-2
             "
           >
@@ -518,8 +601,9 @@ function TvPage() {
             className="
               text-center
               mt-3
-              text-zinc-400
+              text-cyan-300
               text-sm
+              font-semibold
             "
           >
 
