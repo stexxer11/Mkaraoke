@@ -1,5 +1,5 @@
 const socket = new WebSocket(
-    "ws://127.0.0.1:8000/api/karaoke/ws"
+  "wss://mkaraoke-1.onrender.com/api/karaoke/ws"
 )
 
 export default socket
