@@ -6,42 +6,29 @@ import { useKaraoke } from "../context/KaraokeContext"
 
 function TvPage() {
 
-  const {
-    playNextSong,
-  } = useKaraoke()
+  const { playNextSong } = useKaraoke()
 
   // =====================================================
   // STATES
   // =====================================================
 
-  const [currentSong, setCurrentSong] =
-    useState(null)
-
-  const [videoReady, setVideoReady] =
-    useState(false)
-
-  const [showInfo, setShowInfo] =
-    useState(false)
+  const [currentSong, setCurrentSong] = useState(null)
+  const [videoReady, setVideoReady] = useState(false)
+  const [showInfo, setShowInfo] = useState(false)
 
   // =====================================================
   // REFS
   // =====================================================
 
-  const playerRef =
-    useRef(null)
-
-  const socketRef =
-    useRef(null)
-
-  const infoTimeoutRef =
-    useRef(null)
+  const playerRef = useRef(null)
+  const socketRef = useRef(null)
+  const infoTimeoutRef = useRef(null)
 
   // =====================================================
-  // QR URL (NUEVO)
+  // QR URL (NUEVO REAL)
   // =====================================================
 
-  const qrUrl =
-    `${window.location.origin}`
+  const qrUrl = window.location.origin
 
   // =====================================================
   // WEBSOCKET
@@ -88,9 +75,7 @@ function TvPage() {
       console.log("TV SOCKET CLOSED")
     }
 
-    return () => {
-      socket.close()
-    }
+    return () => socket.close()
 
   }, [])
 
@@ -117,9 +102,7 @@ function TvPage() {
       clearTimeout(infoTimeoutRef.current)
 
       infoTimeoutRef.current =
-        setTimeout(() => {
-          setShowInfo(false)
-        }, 3500)
+        setTimeout(() => setShowInfo(false), 3500)
 
     }
 
@@ -142,9 +125,7 @@ function TvPage() {
   }
 
   useEffect(() => {
-    return () => {
-      clearTimeout(infoTimeoutRef.current)
-    }
+    return () => clearTimeout(infoTimeoutRef.current)
   }, [])
 
   const opts = {
@@ -163,6 +144,10 @@ function TvPage() {
       origin: window.location.origin,
     },
   }
+
+  // =====================================================
+  // RENDER
+  // =====================================================
 
   return (
 
@@ -192,8 +177,8 @@ function TvPage() {
 
         <div className="absolute inset-0 flex flex-col items-center justify-center bg-black">
 
-          {/* QR REAL (NUEVO) */}
-          <div className="w-80 h-80 bg-white rounded-3xl flex items-center justify-center">
+          {/* QR NUEVO (REAL Y BONITO) */}
+          <div className="bg-white p-5 rounded-3xl shadow-2xl">
 
             <QRCodeCanvas
               value={qrUrl}
@@ -227,16 +212,16 @@ function TvPage() {
 
       )}
 
-      {/* FLOATING QR (NUEVO TAMBIÉN REAL) */}
+      {/* FLOATING QR (SOLO UNO, REAL) */}
       {currentSong && (
 
         <div className="absolute bottom-5 right-5 bg-zinc-900/90 border border-zinc-700 rounded-3xl p-4 backdrop-blur-xl shadow-2xl">
 
-          <div className="w-32 h-32 bg-white rounded-2xl flex items-center justify-center">
+          <div className="bg-white p-2 rounded-2xl">
 
             <QRCodeCanvas
               value={qrUrl}
-              size={110}
+              size={120}
             />
 
           </div>
