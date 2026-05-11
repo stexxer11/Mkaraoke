@@ -1,0 +1,1769 @@
+
+================================================================================
+ARCHIVO: ./frontend/src/context/KaraokeContext.jsx
+================================================================================
+
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+} from "react"
+
+const KaraokeContext = createContext()
+
+export function KaraokeProvider({ children }) {
+
+  // =====================================================
+  // DEVICE ID
+  // =====================================================
+  const getDeviceId = () => {
+
+    let id = localStorage.getItem("mk_device_id")
+
+    if (!id) {
+      id = crypto.randomUUID()
+      localStorage.setItem("mk_device_id", id)
+    }
+
+    return id
+  }
+
+  const [deviceId] = useState(getDeviceId)
+
+  // =====================================================
+  // SAFE PARSE
+  // =====================================================
+  const safeParse = (key, fallback) => {
+
+    try {
+
+      const data = localStorage.getItem(key)
+
+      if (!data) return fallback
+
+      return JSON.parse(data)
+
+    } catch {
+
+      return fallback
+    }
+  }
+
+  // =====================================================
+  // QUEUE STATE
+  // =====================================================
+  const [queue, setQueue] = useState(() =>
+    safeParse("mk_queue", [])
+  )
+
+  // =====================================================
+  // STORAGE SYNC
+  // =====================================================
+  useEffect(() => {
+
+    localStorage.setItem(
+      "mk_queue",
+      JSON.stringify(queue)
+    )
+
+  }, [queue])
+
+  // =====================================================
+  // MULTI TAB SYNC
+  // =====================================================
+  useEffect(() => {
+
+    const sync = () => {
+
+      const updated = safeParse("mk_queue", [])
+
+      setQueue(updated)
+    }
+
+    window.addEventListener("storage", sync)
+
+    return () =>
+      window.removeEventListener("storage", sync)
+
+  }, [])
+
+  // =====================================================
+  // DERIVED STATE
+  // =====================================================
+  const currentSong = useMemo(() => {
+
+    return (
+      queue.find(song => song.status === "playing")
+      || null
+    )
+
+  }, [queue])
+
+  // =====================================================
+  // ONLY ACTIVE SONGS
+  // =====================================================
+  const activeQueue = useMemo(() => {
+
+    return queue.filter(
+      song =>
+        song.status === "queued" ||
+        song.status === "playing"
+    )
+
+  }, [queue])
+
+  // =====================================================
+  // MY SONG
+  // =====================================================
+  const mySongs = useMemo(() => {
+
+    return activeQueue.filter(
+      song => song.ownerId === deviceId
+    )
+
+  }, [activeQueue, deviceId])
+
+  // =====================================================
+  // HAS ACTIVE SONG
+  // =====================================================
+  const hasActiveSong = mySongs.length > 0
+
+  // =====================================================
+  // ADD SONG
+  // =====================================================
+  const addSong = (songData) => {
+
+    if (hasActiveSong) {
+      return {
+        ok: false,
+        error: "Ya tienes una canción activa"
+      }
+    }
+
+    const hasPlayingSong =
+      activeQueue.some(
+        song => song.status === "playing"
+      )
+
+    const newSong = {
+      id: crypto.randomUUID(),
+
+      ownerId: deviceId,
+
+      title: songData.title,
+      artist: songData.artist,
+      youtubeId: songData.youtubeId,
+
+      status: hasPlayingSong
+        ? "queued"
+        : "playing",
+
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    }
+
+    setQueue(prev => [...prev, newSong])
+
+    return {
+      ok: true,
+      song: newSong
+    }
+  }
+
+  // =====================================================
+  // EDIT SONG
+  // SOLO SI ESTA EN QUEUE
+  // =====================================================
+  const editSong = (songId, newData) => {
+
+    let updatedSuccessfully = false
+
+    const updatedQueue = queue.map(song => {
+
+      const isOwner =
+        song.ownerId === deviceId
+
+      const canEdit =
+        song.status === "queued"
+
+      if (
+        song.id === songId &&
+        isOwner &&
+        canEdit
+      ) {
+
+        updatedSuccessfully = true
+
+        return {
+          ...song,
+
+          title: newData.title,
+          artist: newData.artist,
+          youtubeId: newData.youtubeId,
+
+          updatedAt: Date.now(),
+        }
+      }
+
+      return song
+    })
+
+    setQueue(updatedQueue)
+
+    return {
+      ok: updatedSuccessfully
+    }
+  }
+
+  // =====================================================
+  // CANCEL SONG
+  // =====================================================
+  const cancelSong = (songId) => {
+
+    let cancelled = false
+
+    const updatedQueue = queue.map(song => {
+
+      const isOwner =
+        song.ownerId === deviceId
+
+      const canCancel =
+        song.status === "queued"
+
+      if (
+        song.id === songId &&
+        isOwner &&
+        canCancel
+      ) {
+
+        cancelled = true
+
+        return {
+          ...song,
+          status: "cancelled",
+          updatedAt: Date.now(),
+        }
+      }
+
+      return song
+    })
+
+    setQueue(updatedQueue)
+
+    return {
+      ok: cancelled
+    }
+  }
+
+  // =====================================================
+  // NEXT SONG
+  // =====================================================
+  const playNextSong = () => {
+
+    let foundCurrent = false
+    let nextAssigned = false
+
+    const updatedQueue = queue.map(song => {
+
+      // CURRENT PLAYING -> DONE
+      if (song.status === "playing") {
+
+        foundCurrent = true
+
+        return {
+          ...song,
+          status: "done",
+          updatedAt: Date.now(),
+        }
+      }
+
+      // NEXT QUEUED -> PLAYING
+      if (
+        foundCurrent &&
+        !nextAssigned &&
+        song.status === "queued"
+      ) {
+
+        nextAssigned = true
+
+        return {
+          ...song,
+          status: "playing",
+          updatedAt: Date.now(),
+        }
+      }
+
+      return song
+    })
+
+    // SI NO HAY PLAYING
+    if (!foundCurrent) {
+
+      let assigned = false
+
+      const fallbackQueue = updatedQueue.map(song => {
+
+        if (
+          !assigned &&
+          song.status === "queued"
+        ) {
+
+          assigned = true
+
+          return {
+            ...song,
+            status: "playing",
+          }
+        }
+
+        return song
+      })
+
+      setQueue(fallbackQueue)
+
+      return
+    }
+
+    setQueue(updatedQueue)
+  }
+
+  // =====================================================
+  // FORCE PLAY NOW
+  // =====================================================
+  const playNow = (songId) => {
+
+    let selectedSong = null
+
+    const updatedQueue = queue.map(song => {
+
+      // CURRENT PLAYING -> QUEUED
+      if (song.status === "playing") {
+
+        return {
+          ...song,
+          status: "queued",
+          updatedAt: Date.now(),
+        }
+      }
+
+      // TARGET -> PLAYING
+      if (song.id === songId) {
+
+        selectedSong = song
+
+        return {
+          ...song,
+          status: "playing",
+          updatedAt: Date.now(),
+        }
+      }
+
+      return song
+    })
+
+    setQueue(updatedQueue)
+
+    return {
+      ok: !!selectedSong
+    }
+  }
+
+  // =====================================================
+  // REMOVE SONG
+  // ADMIN REMOVE
+  // =====================================================
+  const removeSongById = (songId) => {
+
+    const updatedQueue = queue.map(song => {
+
+      if (song.id === songId) {
+
+        return {
+          ...song,
+          status: "cancelled",
+          updatedAt: Date.now(),
+        }
+      }
+
+      return song
+    })
+
+    setQueue(updatedQueue)
+  }
+
+  // =====================================================
+  // MOVE SONG UP
+  // =====================================================
+  const moveSongUp = (songId) => {
+
+    const cleanQueue = [...activeQueue]
+
+    const index = cleanQueue.findIndex(
+      song => song.id === songId
+    )
+
+    if (index <= 0) return
+
+    const current = cleanQueue[index]
+    const previous = cleanQueue[index - 1]
+
+    // NO MOVER PLAYING
+    if (previous.status === "playing") return
+
+    cleanQueue[index - 1] = current
+    cleanQueue[index] = previous
+
+    setQueue(cleanQueue)
+  }
+
+  // =====================================================
+  // MOVE SONG DOWN
+  // =====================================================
+  const moveSongDown = (songId) => {
+
+    const cleanQueue = [...activeQueue]
+
+    const index = cleanQueue.findIndex(
+      song => song.id === songId
+    )
+
+    if (
+      index === -1 ||
+      index >= cleanQueue.length - 1
+    ) {
+      return
+    }
+
+    const current = cleanQueue[index]
+    const next = cleanQueue[index + 1]
+
+    cleanQueue[index] = next
+    cleanQueue[index + 1] = current
+
+    setQueue(cleanQueue)
+  }
+
+  // =====================================================
+  // REORDER ENTIRE QUEUE
+  // =====================================================
+  const reorderQueue = (newQueue) => {
+
+    setQueue(newQueue)
+  }
+
+  // =====================================================
+  // CLEAN VISIBLE QUEUE
+  // =====================================================
+  const visibleQueue = useMemo(() => {
+
+    return queue.filter(song =>
+      song.status !== "done" &&
+      song.status !== "cancelled"
+    )
+
+  }, [queue])
+
+  // =====================================================
+  // CONTEXT
+  // =====================================================
+  return (
+
+    <KaraokeContext.Provider
+      value={{
+
+        // STATE
+        queue,
+        visibleQueue,
+        activeQueue,
+        currentSong,
+
+        // USER
+        deviceId,
+        mySongs,
+        hasActiveSong,
+
+        // USER ACTIONS
+        addSong,
+        editSong,
+        cancelSong,
+
+        // PLAYER
+        playNextSong,
+
+        // ADMIN
+        playNow,
+        removeSongById,
+        moveSongUp,
+        moveSongDown,
+        reorderQueue,
+      }}
+    >
+
+      {children}
+
+    </KaraokeContext.Provider>
+  )
+}
+
+export function useKaraoke() {
+
+  return useContext(KaraokeContext)
+}
+
+
+================================================================================
+ARCHIVO: ./frontend/src/context/YouTubeContext.jsx
+================================================================================
+
+import { createContext, useContext, useState } from "react"
+import { searchYouTube } from "../services/youtubeApi"
+
+const YouTubeContext = createContext()
+
+export function YouTubeProvider({ children }) {
+
+  // =========================
+  // STATE
+  // =========================
+  const [results, setResults] = useState([])
+  const [loading, setLoading] = useState(false)
+
+  // =========================
+  // SEARCH SONGS
+  // =========================
+  const searchSongs = async (query) => {
+
+    if (!query || query.trim().length < 2) {
+      setResults([])
+      return
+    }
+
+    setLoading(true)
+
+    try {
+
+      const data = await searchYouTube(query)
+
+      if (Array.isArray(data)) {
+        setResults(data)
+      } else {
+        setResults([])
+      }
+
+    } catch (err) {
+
+      console.error("YouTube Search Error:", err)
+
+      setResults([])
+
+    } finally {
+
+      setLoading(false)
+
+    }
+
+  }
+
+  // =========================
+  // PROVIDER
+  // =========================
+  return (
+
+    <YouTubeContext.Provider
+      value={{
+        results,
+        loading,
+        searchSongs,
+      }}
+    >
+
+      {children}
+
+    </YouTubeContext.Provider>
+
+  )
+
+}
+
+export function useYouTube() {
+  return useContext(YouTubeContext)
+}
+
+
+================================================================================
+ARCHIVO: ./frontend/src/pages/AdminPage.jsx
+================================================================================
+
+import { useRef } from "react"
+import Swal from "sweetalert2"
+
+import {
+  useKaraoke,
+} from "../context/KaraokeContext"
+
+function AdminPage() {
+
+  const {
+
+    queue,
+    currentSong,
+
+    forceNext,
+    removeSongById,
+
+    moveSongUp,
+    moveSongDown,
+
+    addSong,
+
+  } = useKaraoke()
+
+  // ====================================
+  // DRAG SYSTEM
+  // ====================================
+  const dragItem = useRef(null)
+  const dragOverItem = useRef(null)
+
+  // ====================================
+  // DJ SOUND FX
+  // ====================================
+  const playSound = (freq = 400) => {
+
+    try {
+
+      const ctx =
+        new (
+          window.AudioContext ||
+          window.webkitAudioContext
+        )()
+
+      const osc =
+        ctx.createOscillator()
+
+      const gain =
+        ctx.createGain()
+
+      osc.connect(gain)
+
+      gain.connect(ctx.destination)
+
+      osc.frequency.value = freq
+
+      osc.type = "square"
+
+      gain.gain.setValueAtTime(
+        0.05,
+        ctx.currentTime
+      )
+
+      osc.start()
+
+      osc.stop(
+        ctx.currentTime + 0.12
+      )
+
+    } catch {}
+
+  }
+
+  // ====================================
+  // FORCE NEXT
+  // ====================================
+  const handleNext = async () => {
+
+    const res = await Swal.fire({
+
+      title: "¿Saltar canción?",
+
+      icon: "warning",
+
+      showCancelButton: true,
+
+      confirmButtonText: "Saltar",
+
+      background: "#111",
+
+      color: "#fff",
+
+    })
+
+    if (!res.isConfirmed) return
+
+    forceNext()
+
+    playSound(180)
+
+  }
+
+  // ====================================
+  // REMOVE SONG
+  // ====================================
+  const handleRemove = async (
+    song
+  ) => {
+
+    const res = await Swal.fire({
+
+      title: "Eliminar canción",
+
+      text: song.title,
+
+      icon: "warning",
+
+      showCancelButton: true,
+
+      confirmButtonText: "Eliminar",
+
+      background: "#111",
+
+      color: "#fff",
+
+    })
+
+    if (!res.isConfirmed) return
+
+    removeSongById(song.id)
+
+    playSound(120)
+
+  }
+
+  // ====================================
+  // REPEAT SONG
+  // ====================================
+  const handleRepeat = (song) => {
+
+    addSong({
+
+      title: song.title,
+
+      artist: song.artist,
+
+      youtubeId: song.youtubeId,
+
+      thumbnail: song.thumbnail,
+
+    })
+
+    playSound(500)
+
+  }
+
+  // ====================================
+  // DRAG START
+  // ====================================
+  const handleDragStart = (
+    index
+  ) => {
+
+    dragItem.current = index
+
+  }
+
+  // ====================================
+  // DRAG ENTER
+  // ====================================
+  const handleDragEnter = (
+    index
+  ) => {
+
+    dragOverItem.current = index
+
+  }
+
+  // ====================================
+  // DROP
+  // ====================================
+  const handleDrop = () => {
+
+    if (
+      dragItem.current === null ||
+      dragOverItem.current === null
+    ) return
+
+    const from =
+      dragItem.current
+
+    const to =
+      dragOverItem.current
+
+    if (from === to) return
+
+    // SIMPLE VISUAL REORDER
+    if (from < to) {
+
+      moveSongDown(
+        queue[from].id
+      )
+
+    } else {
+
+      moveSongUp(
+        queue[from].id
+      )
+
+    }
+
+    dragItem.current = null
+    dragOverItem.current = null
+
+    playSound(700)
+
+  }
+
+  return (
+
+    <div className="min-h-screen bg-black text-white p-6">
+
+      {/* HEADER */}
+      <div className="mb-8">
+
+        <h1 className="text-5xl font-black text-cyan-400">
+          MKARAOKE ADMIN
+        </h1>
+
+        <p className="text-zinc-500 mt-2">
+          Control profesional de cola
+        </p>
+
+      </div>
+
+      {/* CURRENT SONG */}
+      <div className="bg-zinc-900 border border-cyan-500 rounded-3xl p-6 mb-8">
+
+        <p className="text-cyan-400 font-bold mb-3">
+          🎤 REPRODUCIENDO AHORA
+        </p>
+
+        {currentSong ? (
+
+          <div>
+
+            <h2 className="text-3xl font-black">
+              {currentSong.title}
+            </h2>
+
+            <p className="text-zinc-500 text-lg mt-1">
+              {currentSong.artist}
+            </p>
+
+          </div>
+
+        ) : (
+
+          <p className="text-zinc-500">
+            Esperando canciones...
+          </p>
+
+        )}
+
+      </div>
+
+      {/* ACTIONS */}
+      <div className="flex gap-4 mb-8">
+
+        <button
+          onClick={handleNext}
+          className="bg-cyan-500 hover:bg-cyan-400 text-black font-bold px-6 py-3 rounded-2xl"
+        >
+          ⏭ NEXT
+        </button>
+
+      </div>
+
+      {/* QUEUE */}
+      <div className="bg-zinc-900 rounded-3xl p-6">
+
+        <h2 className="text-2xl font-black text-cyan-400 mb-6">
+          Cola ({queue.length})
+        </h2>
+
+        {queue.length === 0 && (
+
+          <p className="text-zinc-500">
+            Cola vacía
+          </p>
+
+        )}
+
+        {queue.map((song, index) => (
+
+          <div
+            key={song.id}
+            draggable
+
+            onDragStart={() =>
+              handleDragStart(index)
+            }
+
+            onDragEnter={() =>
+              handleDragEnter(index)
+            }
+
+            onDragEnd={handleDrop}
+
+            className="bg-black border border-zinc-800 hover:border-cyan-500 rounded-2xl p-4 mb-4 transition flex justify-between items-center"
+          >
+
+            {/* INFO */}
+            <div className="flex items-center gap-4">
+
+              <div className="bg-cyan-500 text-black font-black w-12 h-12 rounded-full flex items-center justify-center">
+                {index + 1}
+              </div>
+
+              <div>
+
+                <h3 className="font-bold text-lg">
+                  {song.title}
+                </h3>
+
+                <p className="text-zinc-500">
+                  {song.artist}
+                </p>
+
+              </div>
+
+            </div>
+
+            {/* ACTIONS */}
+            <div className="flex items-center gap-3">
+
+              <button
+                onClick={() =>
+                  handleRepeat(song)
+                }
+                className="bg-yellow-400 hover:bg-yellow-300 text-black px-3 py-2 rounded-xl font-bold"
+              >
+                ↻
+              </button>
+
+              <button
+                onClick={() =>
+                  moveSongUp(song.id)
+                }
+                className="bg-zinc-800 hover:bg-zinc-700 px-3 py-2 rounded-xl"
+              >
+                ▲
+              </button>
+
+              <button
+                onClick={() =>
+                  moveSongDown(song.id)
+                }
+                className="bg-zinc-800 hover:bg-zinc-700 px-3 py-2 rounded-xl"
+              >
+                ▼
+              </button>
+
+              <button
+                onClick={() =>
+                  handleRemove(song)
+                }
+                className="bg-red-500 hover:bg-red-400 px-3 py-2 rounded-xl"
+              >
+                ✕
+              </button>
+
+            </div>
+
+          </div>
+
+        ))}
+
+      </div>
+
+    </div>
+
+  )
+
+}
+
+export default AdminPage
+
+
+================================================================================
+ARCHIVO: ./frontend/src/pages/MobilePage.jsx
+================================================================================
+
+import { useState, useEffect, useRef, useMemo } from "react"
+import debounce from "lodash.debounce"
+
+import { useKaraoke } from "../context/KaraokeContext"
+import Swal from "sweetalert2"
+import { searchYouTube } from "../services/youtubeApi"
+
+function MobilePage() {
+
+  const {
+    queue,
+    addSong,
+    editSong,
+    deviceId,
+    currentSong,
+  } = useKaraoke()
+
+  const [search, setSearch] = useState("")
+  const [results, setResults] = useState([])
+  const [loading, setLoading] = useState(false)
+
+  const [editMode, setEditMode] = useState(false)
+  const [editSongData, setEditSongData] = useState(null)
+
+  const alertOpen = useRef(null)
+
+  // =========================
+  // SEARCH
+  // =========================
+  const debouncedSearch = useMemo(
+    () =>
+      debounce(async (value) => {
+
+        if (!value || value.trim().length < 3) {
+          setResults([])
+          return
+        }
+
+        setLoading(true)
+
+        try {
+          const data = await searchYouTube(value)
+          setResults(data || [])
+        } catch (err) {
+          console.log(err)
+          setResults([])
+        }
+
+        setLoading(false)
+
+      }, 700),
+    []
+  )
+
+  const handleSearch = (value) => {
+    setSearch(value)
+    debouncedSearch(value)
+  }
+
+  useEffect(() => {
+    return () => debouncedSearch.cancel()
+  }, [debouncedSearch])
+
+  // =========================
+  // 🔥 STORE TURN SYSTEM (REAL)
+  // =========================
+  const mySongs = queue.filter(s => s.ownerId === deviceId)
+
+  const myQueueIndex = useMemo(() => {
+    if (!currentSong) return -1
+    return mySongs.findIndex(s => s.id === currentSong.id)
+  }, [currentSong, mySongs])
+
+  const isMyTurn = myQueueIndex !== -1
+  const turnsLeft = myQueueIndex
+
+  const isMySongPlaying =
+    isMyTurn &&
+    currentSong?.id === mySongs[myQueueIndex]?.id
+
+  // =========================
+  // ALERT SYSTEM (STABLE)
+  // =========================
+  useEffect(() => {
+
+    if (!currentSong) {
+      alertOpen.current = null
+      if (Swal.isVisible()) Swal.close()
+      return
+    }
+
+    if (alertOpen.current === currentSong.id) return
+    alertOpen.current = currentSong.id
+
+    // =========================
+    // 1. MY SONG PLAYING
+    // =========================
+    if (isMySongPlaying) {
+
+      Swal.fire({
+        title: "Disfruta tu canción 🎤",
+        html: `
+          <div style="font-size:16px;text-align:center">
+            <b style="font-size:18px">${currentSong.title}</b><br/>
+            <span style="color:#22d3ee">Estás en pantalla ahora</span>
+          </div>
+        `,
+        background: "#000",
+        color: "#06b6d4",
+        showConfirmButton: false,
+        allowOutsideClick: false,
+        allowEscapeKey: false
+      })
+
+      return
+    }
+
+    // =========================
+    // 2. NOT YOUR TURN
+    // =========================
+    if (!isMyTurn) {
+
+      Swal.fire({
+        title: "Tu canción está en cola",
+        html: `
+          <div style="font-size:16px;text-align:center">
+            <b>${currentSong.title}</b><br/>
+            <span style="color:#9ca3af">
+              Te faltan ${Math.max(turnsLeft, 0)} turnos
+            </span>
+          </div>
+        `,
+        background: "#000",
+        color: "#06b6d4",
+        showConfirmButton: false,
+        allowOutsideClick: false,
+        allowEscapeKey: false
+      })
+
+      return
+    }
+
+    // =========================
+    // 3. YOUR TURN READY
+    // =========================
+    Swal.fire({
+      title: "Tu turno está activo 🎤",
+      html: `
+        <div style="font-size:16px;text-align:center">
+          <b style="font-size:18px">${currentSong.title}</b><br/>
+          <span style="color:#22d3ee">Puedes prepararte</span>
+        </div>
+      `,
+      background: "#000",
+      color: "#06b6d4",
+      showDenyButton: true,
+      denyButtonText: "Editar canción",
+      showConfirmButton: false,
+      allowOutsideClick: false,
+      allowEscapeKey: false
+    }).then(res => {
+
+      if (res.isDenied) {
+        setEditMode(true)
+        setEditSongData(currentSong)
+        setSearch("")
+        setResults([])
+        alertOpen.current = null
+      }
+    })
+
+  }, [currentSong, queue])
+
+  // =========================
+  // ADD SONG (STORE SAFE)
+  // =========================
+  const handleAddSong = (song) => {
+
+    if (mySongs.length > 0) {
+
+      Swal.fire({
+        icon: "warning",
+        title: "Ya tienes una canción en cola",
+        toast: true,
+        timer: 2000,
+        position: "top-end"
+      })
+
+      return
+    }
+
+    addSong({
+      title: song.title,
+      artist: song.artist,
+      youtubeId: song.youtubeId,
+    })
+  }
+
+  // =========================
+  // REPLACE SONG (EDIT SAFE)
+  // =========================
+  const handleReplaceSong = (song) => {
+
+    if (!editSongData) return
+
+    editSong(editSongData.id, {
+      title: song.title,
+      artist: song.artist,
+      youtubeId: song.youtubeId
+    })
+
+    setEditMode(false)
+    setEditSongData(null)
+
+    setSearch("")
+    setResults([])
+
+    Swal.fire({
+      icon: "success",
+      title: "Canción actualizada",
+      toast: true,
+      timer: 1500,
+      position: "top-end",
+      showConfirmButton: false
+    })
+  }
+
+  return (
+    <div className="min-h-screen text-white flex flex-col">
+
+      {/* HEADER */}
+      <div className="p-5 glass border-b border-white/10">
+
+        <h1 className="text-3xl font-bold text-cyan-400 glow-cyan">
+          MKaraoke
+        </h1>
+
+        <p className="text-zinc-400">
+          Busca tu canción en YouTube
+        </p>
+
+      </div>
+
+      {/* EDIT MODE */}
+      {editMode && (
+        <div className="p-3 border-b border-white/10 glass">
+
+          <input
+            className="w-full p-2 rounded-lg bg-zinc-900 text-sm outline-none"
+            placeholder="Buscar reemplazo..."
+            value={search}
+            onChange={(e) => handleSearch(e.target.value)}
+          />
+
+        </div>
+      )}
+
+      {/* SEARCH */}
+      {!editMode && (
+        <div className="p-5">
+
+          <input
+            className="w-full p-3 rounded-xl glass border border-white/10 outline-none"
+            placeholder="Buscar en YouTube..."
+            value={search}
+            onChange={(e) => handleSearch(e.target.value)}
+          />
+
+        </div>
+      )}
+
+      {/* RESULTS */}
+      <div className="flex-1 p-5 space-y-4 overflow-y-auto">
+
+        {loading && (
+          <p className="text-zinc-500">
+            Buscando en YouTube...
+          </p>
+        )}
+
+        {results.map(song => (
+
+          <div
+            key={song.youtubeId}
+            className="glass tap glow-cyan p-3 rounded-2xl flex gap-4 items-center"
+          >
+
+            <div className="w-20 h-20 rounded-xl overflow-hidden bg-black border border-white/10 shrink-0">
+
+              <img
+                src={`https://img.youtube.com/vi/${song.youtubeId}/hqdefault.jpg`}
+                className="w-full h-full object-cover"
+              />
+
+            </div>
+
+            <div className="flex-1 min-w-0">
+
+              <p className="font-bold truncate">
+                {song.title}
+              </p>
+
+              <p className="text-zinc-400 text-sm truncate">
+                {song.artist}
+              </p>
+
+              <p className="text-cyan-400/60 text-xs mt-1">
+                🎤 disponible
+              </p>
+
+            </div>
+
+            <button
+              onClick={() =>
+                editMode
+                  ? handleReplaceSong(song)
+                  : handleAddSong(song)
+              }
+              className="tap bg-cyan-500 text-black px-4 py-2 rounded-xl font-bold"
+            >
+              +
+            </button>
+
+          </div>
+
+        ))}
+
+      </div>
+
+      {/* FOOTER */}
+      <div className="p-4 border-t border-white/10 glass text-center text-zinc-400">
+        Cola global: {queue.length}
+      </div>
+
+    </div>
+  )
+}
+
+export default MobilePage
+
+
+================================================================================
+ARCHIVO: ./frontend/src/pages/TvPage.jsx
+================================================================================
+
+import { useEffect, useState, useRef } from "react"
+import YouTube from "react-youtube"
+import Swal from "sweetalert2"
+
+import { useKaraoke } from "../context/KaraokeContext"
+
+function TvPage() {
+
+  const {
+    queue,
+    currentSong,
+    setCurrentSong,
+    setQueue,
+  } = useKaraoke()
+
+  const playerRef = useRef(null)
+
+  const [videoReady, setVideoReady] = useState(false)
+  const [showInfo, setShowInfo] = useState(false)
+  const [playerState, setPlayerState] = useState("loading")
+
+  // =========================
+  // 🔒 VIDEO CONTROL
+  // =========================
+  const [blocked, setBlocked] = useState(false)
+  const [canReveal, setCanReveal] = useState(false)
+
+  // =========================
+  // FILTER RESTRICTED
+  // =========================
+  const isAllowedVideo = (song) => {
+
+    if (!song) return false
+
+    return !song.restricted
+  }
+
+  // =========================
+  // NEXT SONG PROFESSIONAL
+  // =========================
+  const playNextSong = () => {
+
+    // no songs left
+    if (queue.length === 0) {
+
+      setCurrentSong(null)
+
+      return
+    }
+
+    // next from queue
+    const nextSong = queue[0]
+
+    // set current
+    setCurrentSong(nextSong)
+
+    // remove from queue
+    const updatedQueue =
+      queue.filter(song => song.id !== nextSong.id)
+
+    setQueue(updatedQueue)
+  }
+
+  // =========================
+  // AUTO RECOVERY
+  // =========================
+  useEffect(() => {
+
+    // if no current song but queue exists
+    if (!currentSong && queue.length > 0) {
+
+      const firstSong = queue[0]
+
+      setCurrentSong(firstSong)
+
+      setQueue(prev =>
+        prev.filter(song => song.id !== firstSong.id)
+      )
+    }
+
+  }, [queue, currentSong])
+
+  // =========================
+  // SONG CHANGE
+  // =========================
+  useEffect(() => {
+
+    if (!currentSong) return
+
+    const allowed = isAllowedVideo(currentSong)
+
+    setBlocked(!allowed)
+
+    setCanReveal(false)
+
+    setVideoReady(false)
+
+    setPlayerState("loading")
+
+    setShowInfo(false)
+
+    Swal.fire({
+      title: "MKARAOKE",
+      text: allowed
+        ? "Cargando canción..."
+        : "Contenido en verificación...",
+      background: "#000",
+      color: "#06b6d4",
+      showConfirmButton: false,
+      allowOutsideClick: false,
+      allowEscapeKey: false,
+      didOpen: () => Swal.showLoading()
+    })
+
+  }, [currentSong])
+
+  // =========================
+  // FULLSCREEN DETECTION
+  // =========================
+  useEffect(() => {
+
+    const onFullscreenChange = () => {
+
+      if (
+        document.fullscreenElement &&
+        blocked
+      ) {
+        setCanReveal(true)
+      }
+
+    }
+
+    document.addEventListener(
+      "fullscreenchange",
+      onFullscreenChange
+    )
+
+    return () => {
+
+      document.removeEventListener(
+        "fullscreenchange",
+        onFullscreenChange
+      )
+
+    }
+
+  }, [blocked])
+
+  // =========================
+  // READY
+  // =========================
+  const handleReady = (event) => {
+
+    playerRef.current = event.target
+
+    setVideoReady(true)
+  }
+
+  // =========================
+  // PLAYER STATE
+  // =========================
+  const handleStateChange = (e) => {
+
+    // ▶ PLAYING
+    if (e.data === 1) {
+
+      setPlayerState("playing")
+
+      Swal.close()
+
+      setShowInfo(true)
+
+      setTimeout(() => {
+        setShowInfo(false)
+      }, 3500)
+    }
+
+    // ⏸ BUFFERING
+    if (e.data === 3) {
+
+      setPlayerState("buffering")
+    }
+
+    // ⏹ ENDED
+    if (e.data === 0) {
+
+      playNextSong()
+    }
+  }
+
+  // =========================
+  // ERROR FALLBACK
+  // =========================
+  const handleError = () => {
+
+    Swal.fire({
+      icon: "error",
+      title: "Video bloqueado",
+      text: "Saltando al siguiente...",
+      timer: 1500,
+      showConfirmButton: false,
+      background: "#000",
+      color: "#fff",
+    })
+
+    setTimeout(() => {
+
+      playNextSong()
+
+    }, 1500)
+  }
+
+  // =========================
+  // YOUTUBE OPTIONS
+  // =========================
+  const opts = {
+
+    width: "100%",
+    height: "100%",
+
+    playerVars: {
+      autoplay: 1,
+      controls: 0,
+      modestbranding: 1,
+      rel: 0,
+      fs: 1,
+      playsinline: 1,
+      enablejsapi: 1,
+      origin: window.location.origin,
+    },
+  }
+
+  return (
+
+    <div className="min-h-screen bg-black text-white relative overflow-hidden">
+
+      {currentSong ? (
+
+        <div className="absolute inset-0">
+
+          {/* 🔒 BLOCKED OVERLAY */}
+          {blocked && !canReveal && (
+
+            <div className="absolute inset-0 bg-black z-50 flex flex-col items-center justify-center">
+
+              <div className="text-cyan-400 text-center">
+
+                <p className="text-3xl font-bold animate-pulse">
+                  Contenido restringido
+                </p>
+
+                <p className="text-zinc-500 mt-3">
+                  Presiona continuar
+                </p>
+
+                <button
+                  className="mt-6 px-6 py-3 bg-cyan-500 text-black rounded-xl font-black hover:bg-cyan-400 transition"
+                  onClick={() => setCanReveal(true)}
+                >
+                  CONTINUAR
+                </button>
+
+              </div>
+
+            </div>
+
+          )}
+
+          {/* 🎥 VIDEO */}
+          <div
+            className={`absolute inset-0 transition-opacity duration-700 ${
+              playerState === "playing" &&
+              (!blocked || canReveal)
+                ? "opacity-100"
+                : "opacity-0"
+            }`}
+          >
+
+            <YouTube
+              key={currentSong.youtubeId}
+              videoId={currentSong.youtubeId}
+              opts={opts}
+              onReady={handleReady}
+              onStateChange={handleStateChange}
+              onError={handleError}
+              className="w-full h-full"
+              iframeClassName="w-full h-full"
+            />
+
+          </div>
+
+          {/* SONG INFO */}
+          <div
+            className={`absolute top-5 left-5 bg-black/70 backdrop-blur-xl px-5 py-3 rounded-2xl transition-all duration-700 ${
+              showInfo
+                ? "opacity-100 translate-y-0"
+                : "opacity-0 -translate-y-5"
+            }`}
+          >
+
+            <h2 className="text-2xl font-black">
+              {currentSong.title}
+            </h2>
+
+            <p className="text-zinc-400 mt-1">
+              {currentSong.artist}
+            </p>
+
+          </div>
+
+          {/* QUEUE */}
+          <div className="absolute bottom-5 right-5 bg-black/70 backdrop-blur-xl p-4 rounded-2xl w-80 border border-cyan-500/20">
+
+            <h3 className="text-cyan-400 font-bold mb-4">
+              Próximos turnos
+            </h3>
+
+            {queue.length > 0 ? (
+
+              queue.slice(0, 5).map((song, index) => (
+
+                <div
+                  key={song.id}
+                  className="flex items-center gap-3 mb-4"
+                >
+
+                  <div className="bg-cyan-500 text-black w-8 h-8 rounded-full flex items-center justify-center font-black text-sm shrink-0">
+                    {index + 1}
+                  </div>
+
+                  <div className="overflow-hidden">
+
+                    <p className="font-bold truncate">
+                      {song.title}
+                    </p>
+
+                    <p className="text-zinc-500 text-sm truncate">
+                      {song.artist}
+                    </p>
+
+                  </div>
+
+                </div>
+
+              ))
+
+            ) : (
+
+              <p className="text-zinc-500">
+                No hay canciones en cola
+              </p>
+
+            )}
+
+          </div>
+
+        </div>
+
+      ) : (
+
+        <div className="absolute inset-0 flex flex-col items-center justify-center bg-black">
+
+          {/* QR PLACEHOLDER */}
+          <div className="w-80 h-80 bg-white rounded-3xl flex items-center justify-center text-black text-6xl font-black">
+
+            QR
+
+          </div>
+
+          <h1 className="text-6xl font-black mt-12 text-cyan-400">
+
+            MKARAOKE
+
+          </h1>
+
+          <p className="text-zinc-500 mt-5 text-xl">
+
+            Esperando canciones...
+
+          </p>
+
+        </div>
+
+      )}
+
+    </div>
+  )
+}
+
+export default TvPage
+
+
+================================================================================
+ARCHIVO: ./frontend/src/services/youtubeApi.js
+================================================================================
+
+import axios from "axios";
+
+export const searchYouTube = async (query) => {
+  if (!query) return [];
+
+  try {
+    const res = await axios.get("http://localhost:8000/search", {
+      params: { q: query }
+    });
+
+    return res.data;
+
+  } catch (err) {
+    console.log(err);
+    return [];
+  }
+};
+
+
+================================================================================
+ARCHIVO: ./frontend/index.html
+================================================================================
+
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>MKaraoke</title>
+  </head>
+
+  <body class="bg-black">
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html> 
+

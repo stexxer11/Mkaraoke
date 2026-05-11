@@ -1,0 +1,82 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  margin: 0;
+  background: radial-gradient(circle at top, #0a0a0a 0%, #050505 60%, #000 100%);
+  color: white;
+  font-family: Arial, sans-serif;
+  overflow-x: hidden;
+}
+
+/* VIDEO BAJANDO */
+@keyframes videoDrop {
+  0% {
+    transform: translateY(-100%);
+    opacity: 0;
+  }
+
+  100% {
+    transform: translateY(0%);
+    opacity: 1;
+  }
+}
+
+/* SCROLL INVISIBLE */
+::-webkit-scrollbar {
+  width: 0px;
+}
+
+/* GLASS */
+.glass {
+  background: rgba(255, 255, 255, 0.04);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+/* GLOW */
+.glow-cyan {
+  box-shadow: 0 0 20px rgba(6, 182, 212, 0.25);
+}
+
+/* TAP */
+.tap {
+  transition: transform 0.15s ease;
+}
+
+.tap:active {
+  transform: scale(0.97);
+}
+
+.swal-mobile {
+  width: 100% !important;
+  height: 100vh !important;
+  border-radius: 0 !important;
+}
+
+.edit-modal {
+  border-radius: 18px !important;
+  border: 1px solid rgba(255,255,255,0.08) !important;
+}
+
+/* mejora scroll dentro del modal */
+.swal2-html-container {
+  overflow: hidden !important;
+}
+
+/* Modal centrado tipo móvil */
+.swal2-popup {
+  width: 92% !important;
+  max-width: 420px !important;
+}
+
+/* Fondo oscuro limpio */
+.swal2-backdrop-show {
+  background: rgba(0,0,0,0.75) !important;
+}
+
+/* Evitar scroll raro */
+body.swal2-shown {
+  overflow: hidden !important;
+}
