@@ -67,9 +67,9 @@ function TvPage() {
 
     socketRef.current = socket
 
-    // =========================
+    // =========================================
     // CONNECT
-    // =========================
+    // =========================================
 
     socket.onopen = () => {
 
@@ -79,21 +79,21 @@ function TvPage() {
 
     }
 
-    // =========================
+    // =========================================
     // MESSAGE
-    // =========================
+    // =========================================
 
     socket.onmessage = async (event) => {
 
       try {
 
-        const data =
-          JSON.parse(event.data)
+        const data = JSON.parse(event.data)
 
-        if (
-          data.type ===
-          "LOAD_VIDEO"
-        ) {
+        // =====================================
+        // LOAD VIDEO
+        // =====================================
+
+        if (data.type === "LOAD_VIDEO") {
 
           setVideoReady(false)
 
@@ -103,14 +103,61 @@ function TvPage() {
 
         }
 
-        if (
-          data.type ===
-          "STOP_VIDEO"
-        ) {
+        // =====================================
+        // STOP VIDEO
+        // =====================================
+
+        if (data.type === "STOP_VIDEO") {
 
           setCurrentSong(null)
 
           setVideoReady(false)
+
+        }
+
+        // =====================================
+        // QUEUE UPDATE
+        // =====================================
+
+        if (data.type === "queue_update") {
+
+          const playingSong =
+            data.queue.find(
+              song =>
+                song.status ===
+                "playing"
+            )
+
+          // =================================
+          // NO SONG PLAYING
+          // =================================
+
+          if (!playingSong) {
+
+            setCurrentSong(null)
+
+            setVideoReady(false)
+
+          }
+
+          // =================================
+          // SONG CHANGED
+          // =================================
+
+          else if (
+
+            currentSong?.id !==
+            playingSong.id
+
+          ) {
+
+            setVideoReady(false)
+
+            setCurrentSong(
+              playingSong
+            )
+
+          }
 
         }
 
@@ -125,9 +172,9 @@ function TvPage() {
 
     }
 
-    // =========================
+    // =========================================
     // ERROR
-    // =========================
+    // =========================================
 
     socket.onerror = (err) => {
 
@@ -138,9 +185,9 @@ function TvPage() {
 
     }
 
-    // =========================
+    // =========================================
     // CLOSE
-    // =========================
+    // =========================================
 
     socket.onclose = () => {
 
@@ -150,9 +197,9 @@ function TvPage() {
 
     }
 
-    // =========================
+    // =========================================
     // CLEANUP
-    // =========================
+    // =========================================
 
     return () => {
 
@@ -160,7 +207,7 @@ function TvPage() {
 
     }
 
-  }, [])
+  }, [currentSong])
 
   // =====================================================
   // PLAYER READY
@@ -172,10 +219,6 @@ function TvPage() {
 
     playerRef.current =
       event.target
-
-    console.log(
-      "PLAYER READY"
-    )
 
   }
 
@@ -333,6 +376,12 @@ function TvPage() {
 
           <YouTube
 
+            key={`
+              ${currentSong.id}
+              -${currentSong.youtubeId}
+              -${currentSong.updatedAt}
+            `}
+
             videoId={
               currentSong.youtubeId
             }
@@ -385,75 +434,30 @@ function TvPage() {
             from-black
             via-zinc-950
             to-cyan-950
-            overflow-hidden
           "
         >
 
-          {/* GLOW */}
           <div
             className="
-              absolute
-              w-[700px]
-              h-[700px]
-              bg-cyan-500/10
-              blur-3xl
-              rounded-full
-            "
-          />
-
-          {/* CONTENT */}
-          <div
-            className="
-              relative
-              z-10
+              bg-zinc-900/80
+              border
+              border-cyan-500/20
+              backdrop-blur-xl
+              rounded-[40px]
+              p-8
+              shadow-2xl
               flex
               flex-col
               items-center
             "
           >
 
-            {/* LOGO */}
-            <h1
-              className="
-                text-7xl
-                font-black
-                tracking-tight
-                text-white
-                drop-shadow-2xl
-              "
-            >
-              M
-              <span
-                className="
-                  text-cyan-400
-                "
-              >
-                KARAOKE
-              </span>
-            </h1>
-
-            <p
-              className="
-                text-zinc-400
-                text-xl
-                mt-3
-                mb-10
-                font-medium
-              "
-            >
-              Escanea y agrega tu canción
-            </p>
-
-            {/* QR CONTAINER */}
             <div
               className="
-                relative
                 bg-white
-                rounded-[2.5rem]
-                p-7
-                shadow-[0_0_80px_rgba(34,211,238,0.25)]
-                border
-                border-white/40
+                rounded-3xl
+                p-5
+                shadow-2xl
               "
             >
 
@@ -462,39 +466,40 @@ function TvPage() {
                 <QRCodeCanvas
                   key={qrUrl}
                   value={qrUrl}
-                  size={320}
+                  size={280}
                 />
 
               )}
 
             </div>
 
-            {/* CTA */}
-            <div
+            <h1
               className="
+                text-6xl
+                font-black
                 mt-8
-                px-6
-                py-3
-                rounded-2xl
-                bg-cyan-500/10
-                border
-                border-cyan-400/20
-                backdrop-blur-xl
+                text-cyan-400
+                tracking-wide
+              "
+            >
+              MKARAOKE
+            </h1>
+
+            <p
+              className="
+                text-zinc-400
+                mt-4
+                text-xl
+                text-center
+                max-w-md
               "
             >
 
-              <p
-                className="
-                  text-cyan-300
-                  text-lg
-                  font-semibold
-                  tracking-wide
-                "
-              >
-                Escanea para cantar
-              </p>
+              Escanea para cantar
+              y agregar canciones
+              en tiempo real
 
-            </div>
+            </p>
 
           </div>
 
@@ -567,20 +572,26 @@ function TvPage() {
             absolute
             bottom-5
             right-5
-            bg-black/70
+            bg-zinc-900/90
             border
-            border-cyan-500/20
+            border-zinc-700
             rounded-3xl
             p-4
-            backdrop-blur-2xl
+            backdrop-blur-xl
             shadow-2xl
           "
         >
 
           <div
             className="
-              bg-white
+              w-32
+              h-32
               rounded-2xl
+              bg-white
+              flex
+              items-center
+              justify-center
+              overflow-hidden
               p-2
             "
           >
@@ -601,9 +612,9 @@ function TvPage() {
             className="
               text-center
               mt-3
-              text-cyan-300
+              text-zinc-400
               text-sm
-              font-semibold
+              font-medium
             "
           >
 
