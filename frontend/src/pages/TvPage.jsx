@@ -15,6 +15,7 @@ function TvPage() {
   const [currentSong, setCurrentSong] = useState(null)
   const [videoReady, setVideoReady] = useState(false)
   const [showInfo, setShowInfo] = useState(false)
+  const [qrUrl, setQrUrl] = useState("")
 
   // =====================================================
   // REFS
@@ -25,10 +26,14 @@ function TvPage() {
   const infoTimeoutRef = useRef(null)
 
   // =====================================================
-  // QR URL (NUEVO REAL)
+  // QR URL (FIX REAL)
   // =====================================================
 
-  const qrUrl = window.location.origin
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      setQrUrl(window.location.origin)
+    }
+  }, [])
 
   // =====================================================
   // WEBSOCKET
@@ -96,7 +101,6 @@ function TvPage() {
     if (event.data === 1) {
 
       setVideoReady(true)
-
       setShowInfo(true)
 
       clearTimeout(infoTimeoutRef.current)
@@ -141,7 +145,7 @@ function TvPage() {
       playsinline: 1,
       iv_load_policy: 3,
       cc_load_policy: 0,
-      origin: window.location.origin,
+      origin: typeof window !== "undefined" ? window.location.origin : "",
     },
   }
 
@@ -177,13 +181,15 @@ function TvPage() {
 
         <div className="absolute inset-0 flex flex-col items-center justify-center bg-black">
 
-          {/* QR NUEVO (REAL Y BONITO) */}
+          {/* QR */}
           <div className="bg-white p-5 rounded-3xl shadow-2xl">
 
-            <QRCodeCanvas
-              value={qrUrl}
-              size={260}
-            />
+            {qrUrl && (
+              <QRCodeCanvas
+                value={qrUrl}
+                size={260}
+              />
+            )}
 
           </div>
 
@@ -212,17 +218,19 @@ function TvPage() {
 
       )}
 
-      {/* FLOATING QR (SOLO UNO, REAL) */}
+      {/* FLOATING QR */}
       {currentSong && (
 
         <div className="absolute bottom-5 right-5 bg-zinc-900/90 border border-zinc-700 rounded-3xl p-4 backdrop-blur-xl shadow-2xl">
 
           <div className="bg-white p-2 rounded-2xl">
 
-            <QRCodeCanvas
-              value={qrUrl}
-              size={120}
-            />
+            {qrUrl && (
+              <QRCodeCanvas
+                value={qrUrl}
+                size={120}
+              />
+            )}
 
           </div>
 
