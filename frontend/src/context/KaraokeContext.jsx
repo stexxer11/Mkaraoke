@@ -81,135 +81,52 @@ export function KaraokeProvider({
 
   const socketRef =
     useRef(null)
+useEffect(() => {
 
-  useEffect(() => {
+  const ws = new WebSocket(
+    `${import.meta.env.VITE_WS_URL.replace("https", "wss")}/ws`
+  )
 
-    const ws =
-      new WebSocket(
-        "ws://localhost:8000/ws"
-      )
+  socketRef.current = ws
 
-    socketRef.current = ws
+  ws.onopen = () => {
+    console.log("WS CONNECTED")
+  }
 
-    // ==========================================
-    // CONNECT
-    // ==========================================
+  ws.onmessage = (event) => {
 
-    ws.onopen = () => {
+    try {
 
-      console.log(
-        "WS CONNECTED"
-      )
+      const data = JSON.parse(event.data)
 
-    }
-
-    // ==========================================
-    // MESSAGE
-    // ==========================================
-
-    ws.onmessage = (
-      event
-    ) => {
-
-      try {
-
-        const data =
-          JSON.parse(
-            event.data
-          )
-
-        // ======================================
-        // QUEUE UPDATE
-        // ======================================
-
-        if (
-          data.type ===
-          "queue_update"
-        ) {
-
-          setQueue(
-            data.queue || []
-          )
-
-          // FORCE TV RELOAD
-          reloadTvPlayer()
-
-        }
-
-        // ======================================
-        // FORCE PLAYER
-        // ======================================
-
-        if (
-          data.type ===
-          "force_reload"
-        ) {
-
-          reloadTvPlayer()
-
-        }
-
-      } catch (err) {
-
-        console.log(
-          "WS PARSE ERROR",
-          err
-        )
-
+      if (data.type === "queue_update") {
+        setQueue(data.queue || [])
+        reloadTvPlayer()
       }
 
-    }
-
-    // ==========================================
-    // ERROR
-    // ==========================================
-
-    ws.onerror = (
-      err
-    ) => {
-
-      console.log(
-        "WS ERROR",
-        err
-      )
-
-    }
-
-    // ==========================================
-    // CLOSE
-    // ==========================================
-
-    ws.onclose = () => {
-
-      console.log(
-        "WS CLOSED"
-      )
-
-    }
-
-    // ==========================================
-    // CLEANUP
-    // ==========================================
-
-    return () => {
-
-      if (
-
-        ws.readyState ===
-          WebSocket.OPEN ||
-
-        ws.readyState ===
-          WebSocket.CONNECTING
-
-      ) {
-
-        ws.close()
-
+      if (data.type === "force_reload") {
+        reloadTvPlayer()
       }
 
+    } catch (err) {
+      console.log("WS PARSE ERROR", err)
     }
 
-  }, [])
+  }
+
+  ws.onerror = (err) => {
+    console.log("WS ERROR", err)
+  }
+
+  ws.onclose = () => {
+    console.log("WS CLOSED")
+  }
+
+  return () => {
+    ws.close()
+  }
+
+}, [])
 
   // =====================================================
   // CURRENT SONG

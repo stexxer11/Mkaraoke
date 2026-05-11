@@ -39,93 +39,67 @@ function TvPage() {
   // WEBSOCKET
   // =====================================================
 
-  useEffect(() => {
+ useEffect(() => {
 
-    const socket =
-      new WebSocket(
-        "ws://localhost:8000/ws"
-      )
+  const socket = new WebSocket(
+    `${import.meta.env.VITE_WS_URL.replace("https", "wss")}/ws`
+  )
 
-    socketRef.current =
-      socket
+  socketRef.current = socket
 
-    // =========================================
-    // CONNECT
-    // =========================================
+  // =========================
+  // CONNECT
+  // =========================
+  socket.onopen = () => {
+    console.log("TV SOCKET CONNECTED")
+  }
 
-    socket.onopen = () => {
+  // =========================
+  // MESSAGE
+  // =========================
+  socket.onmessage = async (event) => {
 
-      console.log(
-        "TV SOCKET CONNECTED"
-      )
+    try {
 
-    }
+      const data = JSON.parse(event.data)
 
-    // =========================================
-    // MESSAGE
-    // =========================================
-
-    socket.onmessage =
-      async (event) => {
-
-        const data =
-          JSON.parse(
-            event.data
-          )
-
-        // =====================================
-        // LOAD VIDEO
-        // =====================================
-
-        if (
-          data.type ===
-          "LOAD_VIDEO"
-        ) {
-
-          setVideoReady(false)
-
-          setCurrentSong(
-            data.song
-          )
-
-        }
-
-        // =====================================
-        // STOP VIDEO
-        // =====================================
-
-        if (
-          data.type ===
-          "STOP_VIDEO"
-        ) {
-
-          setCurrentSong(null)
-
-          setVideoReady(false)
-
-        }
-
+      if (data.type === "LOAD_VIDEO") {
+        setVideoReady(false)
+        setCurrentSong(data.song)
       }
 
-    // =========================================
-    // CLOSE
-    // =========================================
+      if (data.type === "STOP_VIDEO") {
+        setCurrentSong(null)
+        setVideoReady(false)
+      }
 
-    socket.onclose = () => {
-
-      console.log(
-        "TV SOCKET CLOSED"
-      )
-
+    } catch (err) {
+      console.log("WS PARSE ERROR", err)
     }
+  }
 
-    return () => {
+  // =========================
+  // ERROR
+  // =========================
+  socket.onerror = (err) => {
+    console.log("TV SOCKET ERROR", err)
+  }
 
-      socket.close()
+  // =========================
+  // CLOSE
+  // =========================
+  socket.onclose = () => {
+    console.log("TV SOCKET CLOSED")
+  }
 
-    }
+  // =========================
+  // CLEANUP
+  // =========================
+  return () => {
+    socket.close()
+  }
 
-  }, [])
+}, [])
 
   // =====================================================
   // PLAYER READY

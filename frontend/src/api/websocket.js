@@ -1,5 +1,5 @@
-const socket = new WebSocket(
-  "wss://mkaraoke-1.onrender.com/api/karaoke/ws"
-)
+const WS_URL = import.meta.env.VITE_WS_URL.replace("https", "wss");
 
-export default socket
+const socket = new WebSocket(`${WS_URL}/ws`);
+
+export default socket;
