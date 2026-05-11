@@ -63,17 +63,11 @@ export function KaraokeProvider({
     useState([])
 
   // =====================================================
-  // FORCE TV RELOAD
+  // PLAYER VERSION
   // =====================================================
 
   const [playerVersion, setPlayerVersion] =
     useState(0)
-
-  const reloadTvPlayer = () => {
-
-    setPlayerVersion(prev => prev + 1)
-
-  }
 
   // =====================================================
   // WEBSOCKET
@@ -81,52 +75,119 @@ export function KaraokeProvider({
 
   const socketRef =
     useRef(null)
-useEffect(() => {
 
-  const ws = new WebSocket(
-    `${import.meta.env.VITE_WS_URL.replace("https", "wss")}/ws`
-  )
+  useEffect(() => {
 
-  socketRef.current = ws
+    const ws = new WebSocket(
 
-  ws.onopen = () => {
-    console.log("WS CONNECTED")
-  }
+      `${import.meta.env.VITE_WS_URL.replace(
+        "https",
+        "wss"
+      )}/ws`
 
-  ws.onmessage = (event) => {
+    )
 
-    try {
+    socketRef.current = ws
 
-      const data = JSON.parse(event.data)
+    ws.onopen = () => {
 
-      if (data.type === "queue_update") {
-        setQueue(data.queue || [])
-        reloadTvPlayer()
-      }
+      console.log(
+        "WS CONNECTED"
+      )
 
-      if (data.type === "force_reload") {
-        reloadTvPlayer()
-      }
-
-    } catch (err) {
-      console.log("WS PARSE ERROR", err)
     }
 
-  }
+    ws.onmessage = (
+      event
+    ) => {
 
-  ws.onerror = (err) => {
-    console.log("WS ERROR", err)
-  }
+      try {
 
-  ws.onclose = () => {
-    console.log("WS CLOSED")
-  }
+        const data =
+          JSON.parse(
+            event.data
+          )
 
-  return () => {
-    ws.close()
-  }
+        // ============================
+        // QUEUE UPDATE
+        // ============================
 
-}, [])
+        if (
+          data.type ===
+          "queue_update"
+        ) {
+
+          setQueue(
+            data.queue || []
+          )
+
+        }
+
+        // ============================
+        // PLAYER EVENTS
+        // ============================
+
+        if (
+
+          data.type ===
+            "LOAD_VIDEO" ||
+
+          data.type ===
+            "STOP_VIDEO"
+
+        ) {
+
+          setPlayerVersion(
+            prev => prev + 1
+          )
+
+        }
+
+      } catch (err) {
+
+        console.log(
+          "WS ERROR",
+          err
+        )
+
+      }
+
+    }
+
+    ws.onerror = (err) => {
+
+      console.log(
+        "WS ERROR",
+        err
+      )
+
+    }
+
+    ws.onclose = () => {
+
+      console.log(
+        "WS CLOSED"
+      )
+
+      // ============================
+      // AUTO RECONNECT
+      // ============================
+
+      setTimeout(() => {
+
+        window.location.reload()
+
+      }, 2000)
+
+    }
+
+    return () => {
+
+      ws.close()
+
+    }
+
+  }, [])
 
   // =====================================================
   // CURRENT SONG
@@ -135,15 +196,13 @@ useEffect(() => {
   const currentSong =
     useMemo(() => {
 
-      return (
+      return queue.find(
 
-        queue.find(
-          song =>
-            song.status ===
-            "playing"
-        ) || null
+        song =>
+          song.status ===
+          "playing"
 
-      )
+      ) || null
 
     }, [queue])
 
@@ -198,32 +257,6 @@ useEffect(() => {
     mySongs.length > 0
 
   // =====================================================
-  // FORCE BROADCAST
-  // =====================================================
-
-  const broadcastReload = () => {
-
-    if (
-      socketRef.current &&
-      socketRef.current.readyState === 1
-    ) {
-
-      socketRef.current.send(
-
-        JSON.stringify({
-
-          type:
-            "force_reload"
-
-        })
-
-      )
-
-    }
-
-  }
-
-  // =====================================================
   // ADD SONG
   // =====================================================
 
@@ -233,26 +266,21 @@ useEffect(() => {
 
     try {
 
-      const res =
-        await addSongApi({
+      return await addSongApi({
 
-          ownerId:
-            deviceId,
+        ownerId:
+          deviceId,
 
-          title:
-            songData.title,
+        title:
+          songData.title,
 
-          artist:
-            songData.artist,
+        artist:
+          songData.artist,
 
-          youtubeId:
-            songData.youtubeId,
+        youtubeId:
+          songData.youtubeId,
 
-        })
-
-      broadcastReload()
-
-      return res
+      })
 
     } catch (err) {
 
@@ -284,15 +312,10 @@ useEffect(() => {
 
     try {
 
-      const res =
-        await editSongApi(
-          songId,
-          data
-        )
-
-      broadcastReload()
-
-      return res
+      return await editSongApi(
+        songId,
+        data
+      )
 
     } catch {
 
@@ -313,14 +336,9 @@ useEffect(() => {
 
       try {
 
-        const res =
-          await cancelSongApi(
-            songId
-          )
-
-        broadcastReload()
-
-        return res
+        return await cancelSongApi(
+          songId
+        )
 
       } catch {
 
@@ -343,10 +361,6 @@ useEffect(() => {
 
         await nextSongApi()
 
-        reloadTvPlayer()
-
-        broadcastReload()
-
       } catch (err) {
 
         console.log(err)
@@ -365,16 +379,9 @@ useEffect(() => {
 
     try {
 
-      const res =
-        await playNowApi(
-          songId
-        )
-
-      reloadTvPlayer()
-
-      broadcastReload()
-
-      return res
+      return await playNowApi(
+        songId
+      )
 
     } catch {
 
@@ -399,10 +406,6 @@ useEffect(() => {
           songId
         )
 
-        reloadTvPlayer()
-
-        broadcastReload()
-
       } catch (err) {
 
         console.log(err)
@@ -415,108 +418,19 @@ useEffect(() => {
   // MOVE SONG UP
   // =====================================================
 
-  const moveSongUp = (
-    songId
-  ) => {
-
-    const updated = [
-      ...activeQueue
-    ]
-
-    const index =
-      updated.findIndex(
-        s =>
-          s.id === songId
-      )
-
-    if (index <= 0)
-      return
-
-    const current =
-      updated[index]
-
-    const previous =
-      updated[index - 1]
-
-    if (
-      previous.status ===
-      "playing"
-    ) {
-      return
-    }
-
-    updated[index - 1] =
-      current
-
-    updated[index] =
-      previous
-
-    setQueue(updated)
-
-    reloadTvPlayer()
-
-  }
+  const moveSongUp = () => {}
 
   // =====================================================
   // MOVE SONG DOWN
   // =====================================================
 
-  const moveSongDown = (
-    songId
-  ) => {
-
-    const updated = [
-      ...activeQueue
-    ]
-
-    const index =
-      updated.findIndex(
-        s =>
-          s.id === songId
-      )
-
-    if (
-
-      index === -1 ||
-
-      index >=
-        updated.length - 1
-
-    ) {
-      return
-    }
-
-    const current =
-      updated[index]
-
-    const next =
-      updated[index + 1]
-
-    updated[index] =
-      next
-
-    updated[index + 1] =
-      current
-
-    setQueue(updated)
-
-    reloadTvPlayer()
-
-  }
+  const moveSongDown = () => {}
 
   // =====================================================
   // REORDER QUEUE
   // =====================================================
 
-  const reorderQueue = (
-    newQueue
-  ) => {
-
-    setQueue(newQueue)
-
-    reloadTvPlayer()
-
-  }
+  const reorderQueue = () => {}
 
   // =====================================================
   // VISIBLE QUEUE
@@ -576,10 +490,6 @@ useEffect(() => {
         moveSongUp,
         moveSongDown,
         reorderQueue,
-
-        // INTERNAL
-        setQueue,
-        reloadTvPlayer,
 
       }}
     >
