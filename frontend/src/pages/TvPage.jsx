@@ -27,6 +27,13 @@ function TvPage() {
     useState("")
 
   // =====================================================
+  // FORCE PLAYER REMOUNT
+  // =====================================================
+
+  const [playerKey, setPlayerKey] =
+    useState(0)
+
+  // =====================================================
   // REFS
   // =====================================================
 
@@ -62,14 +69,17 @@ function TvPage() {
   useEffect(() => {
 
     const socket = new WebSocket(
-      `${import.meta.env.VITE_WS_URL.replace("https", "wss")}/ws`
+      `${import.meta.env.VITE_WS_URL.replace(
+        "https",
+        "wss"
+      )}/ws`
     )
 
     socketRef.current = socket
 
-    // =========================
+    // =========================================
     // CONNECT
-    // =========================
+    // =========================================
 
     socket.onopen = () => {
 
@@ -79,23 +89,57 @@ function TvPage() {
 
     }
 
-    // =========================
+    // =========================================
     // MESSAGE
-    // =========================
+    // =========================================
 
-    socket.onmessage = async (event) => {
+    socket.onmessage = async (
+      event
+    ) => {
 
       try {
 
         const data =
-          JSON.parse(event.data)
+          JSON.parse(
+            event.data
+          )
+
+        // =====================================
+        // LOAD VIDEO
+        // =====================================
 
         if (
           data.type ===
           "LOAD_VIDEO"
         ) {
 
+          console.log(
+            "LOAD VIDEO",
+            data.song
+          )
+
+          // ===============================
+          // RESET PLAYER UI
+          // ===============================
+
           setVideoReady(false)
+
+          // ===============================
+          // FORCE FULL REMOUNT
+          // IMPORTANT FOR:
+          // - restart
+          // - repeat
+          // - playNow
+          // - same video replay
+          // ===============================
+
+          setPlayerKey(
+            prev => prev + 1
+          )
+
+          // ===============================
+          // UPDATE SONG
+          // ===============================
 
           setCurrentSong(
             data.song
@@ -103,14 +147,26 @@ function TvPage() {
 
         }
 
+        // =====================================
+        // STOP VIDEO
+        // =====================================
+
         if (
           data.type ===
           "STOP_VIDEO"
         ) {
 
+          console.log(
+            "STOP VIDEO"
+          )
+
           setCurrentSong(null)
 
           setVideoReady(false)
+
+          setPlayerKey(
+            prev => prev + 1
+          )
 
         }
 
@@ -125,9 +181,9 @@ function TvPage() {
 
     }
 
-    // =========================
+    // =========================================
     // ERROR
-    // =========================
+    // =========================================
 
     socket.onerror = (err) => {
 
@@ -138,9 +194,9 @@ function TvPage() {
 
     }
 
-    // =========================
+    // =========================================
     // CLOSE
-    // =========================
+    // =========================================
 
     socket.onclose = () => {
 
@@ -150,9 +206,9 @@ function TvPage() {
 
     }
 
-    // =========================
+    // =========================================
     // CLEANUP
-    // =========================
+    // =========================================
 
     return () => {
 
@@ -192,6 +248,10 @@ function TvPage() {
 
       if (event.data === 1) {
 
+        console.log(
+          "VIDEO PLAYING"
+        )
+
         setVideoReady(true)
 
         setShowInfo(true)
@@ -215,9 +275,13 @@ function TvPage() {
 
       if (event.data === 0) {
 
+        console.log(
+          "VIDEO ENDED"
+        )
+
         try {
 
-          playNextSong()
+          await playNextSong()
 
         } catch (err) {
 
@@ -243,7 +307,7 @@ function TvPage() {
 
       try {
 
-        playNextSong()
+        await playNextSong()
 
       } catch (e) {
 
@@ -332,6 +396,12 @@ function TvPage() {
         >
 
           <YouTube
+
+            // ===================================
+            // FORCE REMOUNT
+            // ===================================
+
+            key={playerKey}
 
             videoId={
               currentSong.youtubeId
@@ -444,7 +514,7 @@ function TvPage() {
               Escanea y agrega tu canción
             </p>
 
-            {/* QR CONTAINER */}
+            {/* QR */}
             <div
               className="
                 relative
