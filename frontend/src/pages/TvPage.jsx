@@ -422,13 +422,13 @@ function TvPage() {
                 drop-shadow-2xl
               "
             >
-              MK
+              M
               <span
                 className="
                   text-cyan-400
                 "
               >
-                ARAOKE
+                KARAOKE
               </span>
             </h1>
 
