@@ -8,8 +8,9 @@ from fastapi import (
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-import sqlite3
-import requests
+import aiosqlite
+import httpx
+import asyncio
 import json
 import time
 
@@ -37,44 +38,15 @@ app.add_middleware(
 # CONFIG
 # =====================================================
 
-API_KEY = "AIzaSyBEnuSxawI3qX-6OcnNl_fp9NDR_nmpp5Q"
+API_KEY = "TU_API_KEY"
 
-# =====================================================
-# SQLITE
-# =====================================================
+db = None
 
-conn = sqlite3.connect(
-    "karaoke.db",
-    check_same_thread=False
+clients = set()
+
+http_client = httpx.AsyncClient(
+    timeout=10
 )
-
-cursor = conn.cursor()
-
-cursor.execute("""
-CREATE TABLE IF NOT EXISTS songs (
-
-    id TEXT PRIMARY KEY,
-
-    owner_id TEXT,
-
-    title TEXT,
-    artist TEXT,
-    youtube_id TEXT,
-
-    status TEXT,
-
-    created_at INTEGER,
-    updated_at INTEGER
-)
-""")
-
-conn.commit()
-
-# =====================================================
-# WEBSOCKET CLIENTS
-# =====================================================
-
-clients = []
 
 # =====================================================
 # MODELS
@@ -83,23 +55,63 @@ clients = []
 class SongCreate(BaseModel):
 
     ownerId: str
-
     title: str
     artist: str
     youtubeId: str
 
 
-class SongEdit(BaseModel):
+# =====================================================
+# STARTUP
+# =====================================================
 
-    title: str
-    artist: str
-    youtubeId: str
+@app.on_event("startup")
+async def startup():
+
+    global db
+
+    db = await aiosqlite.connect(
+        "karaoke.db"
+    )
+
+    await db.execute("""
+    CREATE TABLE IF NOT EXISTS songs (
+
+        id TEXT PRIMARY KEY,
+
+        owner_id TEXT,
+
+        title TEXT,
+        artist TEXT,
+        youtube_id TEXT,
+
+        status TEXT,
+
+        created_at INTEGER,
+        updated_at INTEGER
+    )
+    """)
+
+    # ============================
+    # PERFORMANCE INDEXES
+    # ============================
+
+    await db.execute("""
+    CREATE INDEX IF NOT EXISTS idx_status
+    ON songs(status)
+    """)
+
+    await db.execute("""
+    CREATE INDEX IF NOT EXISTS idx_created
+    ON songs(created_at)
+    """)
+
+    await db.commit()
 
 # =====================================================
 # HELPERS
 # =====================================================
 
-def song_to_dict(row):
+def row_to_song(row):
 
     return {
         "id": row[0],
@@ -112,61 +124,77 @@ def song_to_dict(row):
         "updatedAt": row[7],
     }
 
+# =====================================================
+# QUEUE HELPERS
+# =====================================================
 
-def get_queue():
+async def get_queue():
 
-    rows = cursor.execute("""
+    cursor = await db.execute("""
         SELECT *
         FROM songs
-        WHERE status != 'done'
-        AND status != 'cancelled'
+        WHERE status IN ('queued', 'playing')
         ORDER BY created_at ASC
-    """).fetchall()
+    """)
+
+    rows = await cursor.fetchall()
 
     return [
-        song_to_dict(r)
+        row_to_song(r)
         for r in rows
     ]
 
+async def get_current_song():
 
-def get_current_song():
-
-    row = cursor.execute("""
+    cursor = await db.execute("""
         SELECT *
         FROM songs
         WHERE status = 'playing'
         LIMIT 1
-    """).fetchone()
+    """)
+
+    row = await cursor.fetchone()
 
     if not row:
         return None
 
-    return song_to_dict(row)
+    return row_to_song(row)
 
 # =====================================================
 # BROADCAST
 # =====================================================
 
-async def broadcast(data: dict):
+async def broadcast(data):
 
-    disconnected = []
+    dead = set()
+
+    tasks = []
+
+    message = json.dumps(data)
 
     for ws in clients:
 
-        try:
-
-            await ws.send_text(
-                json.dumps(data)
+        tasks.append(
+            send_safe(
+                ws,
+                message,
+                dead
             )
+        )
 
-        except:
+    await asyncio.gather(*tasks)
 
-            disconnected.append(ws)
+    clients.difference_update(dead)
 
-    for ws in disconnected:
+async def send_safe(ws, message, dead):
 
-        if ws in clients:
-            clients.remove(ws)
+    try:
+
+        await ws.send_text(message)
+
+    except:
+
+        dead.add(ws)
 
 # =====================================================
 # BROADCAST QUEUE
@@ -178,7 +206,7 @@ async def broadcast_queue():
 
         "type": "queue_update",
 
-        "queue": get_queue()
+        "queue": await get_queue()
     })
 
 # =====================================================
@@ -187,11 +215,7 @@ async def broadcast_queue():
 
 async def broadcast_player():
 
-    current = get_current_song()
-
-    # =========================================
-    # STOP VIDEO
-    # =========================================
+    current = await get_current_song()
 
     if not current:
 
@@ -205,17 +229,11 @@ async def broadcast_player():
 
         return
 
-    # =========================================
-    # LOAD VIDEO
-    # =========================================
-
     await broadcast({
 
         "type": "LOAD_VIDEO",
 
         "song": current,
-
-        "force": True,
 
         "timestamp":
             int(time.time() * 1000)
@@ -231,36 +249,28 @@ async def websocket_endpoint(ws: WebSocket):
 
     await ws.accept()
 
-    clients.append(ws)
+    clients.add(ws)
 
-    # SEND INITIAL QUEUE
-
-    await ws.send_text(json.dumps({
+    await ws.send_json({
 
         "type": "queue_update",
 
-        "queue": get_queue()
+        "queue": await get_queue()
+    })
 
-    }))
-
-    # SEND CURRENT PLAYER
-
-    current = get_current_song()
+    current = await get_current_song()
 
     if current:
 
-        await ws.send_text(json.dumps({
+        await ws.send_json({
 
             "type": "LOAD_VIDEO",
 
             "song": current,
 
-            "force": True,
-
             "timestamp":
                 int(time.time() * 1000)
-
-        }))
+        })
 
     try:
 
@@ -270,19 +280,7 @@ async def websocket_endpoint(ws: WebSocket):
 
     except WebSocketDisconnect:
 
-        if ws in clients:
-
-            clients.remove(ws)
-
-# =====================================================
-# QUEUE
-# =====================================================
-
-@app.get("/queue")
-
-def queue():
-
-    return get_queue()
+        clients.discard(ws)
 
 # =====================================================
 # ADD SONG
@@ -292,25 +290,31 @@ def queue():
 
 async def add_song(song: SongCreate):
 
-    active = cursor.execute("""
-        SELECT *
+    cursor = await db.execute("""
+        SELECT 1
         FROM songs
         WHERE owner_id = ?
         AND status IN ('queued', 'playing')
-    """, (song.ownerId,)).fetchone()
+        LIMIT 1
+    """, (song.ownerId,))
 
-    if active:
+    exists = await cursor.fetchone()
+
+    if exists:
 
         raise HTTPException(
             status_code=400,
             detail="Ya tienes una canción activa"
         )
 
-    playing = cursor.execute("""
-        SELECT *
+    cursor = await db.execute("""
+        SELECT 1
         FROM songs
         WHERE status = 'playing'
-    """).fetchone()
+        LIMIT 1
+    """)
+
+    playing = await cursor.fetchone()
 
     status = (
         "queued"
@@ -320,9 +324,7 @@ async def add_song(song: SongCreate):
 
     now = int(time.time() * 1000)
 
-    song_id = str(uuid4())
-
-    cursor.execute("""
+    await db.execute("""
         INSERT INTO songs (
 
             id,
@@ -342,7 +344,7 @@ async def add_song(song: SongCreate):
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     """, (
 
-        song_id,
+        str(uuid4()),
         song.ownerId,
 
         song.title,
@@ -355,99 +357,14 @@ async def add_song(song: SongCreate):
         now
     ))
 
-    conn.commit()
+    await db.commit()
 
-    await broadcast_queue()
+    await asyncio.gather(
 
-    if status == "playing":
+        broadcast_queue(),
 
-        await broadcast_player()
-
-    return {
-        "ok": True
-    }
-
-# =====================================================
-# EDIT SONG
-# =====================================================
-
-@app.put("/queue/edit/{song_id}")
-
-async def edit_song(
-    song_id: str,
-    data: SongEdit
-):
-
-    row = cursor.execute("""
-        SELECT *
-        FROM songs
-        WHERE id = ?
-        AND status = 'queued'
-    """, (song_id,)).fetchone()
-
-    if not row:
-
-        raise HTTPException(
-            status_code=404,
-            detail="Canción no editable"
-        )
-
-    cursor.execute("""
-        UPDATE songs
-
-        SET
-            title = ?,
-            artist = ?,
-            youtube_id = ?,
-            updated_at = ?
-
-        WHERE id = ?
-    """, (
-
-        data.title,
-        data.artist,
-        data.youtubeId,
-
-        int(time.time() * 1000),
-
-        song_id
-    ))
-
-    conn.commit()
-
-    await broadcast_queue()
-
-    return {
-        "ok": True
-    }
-
-# =====================================================
-# CANCEL SONG
-# =====================================================
-
-@app.put("/queue/cancel/{song_id}")
-
-async def cancel_song(song_id: str):
-
-    cursor.execute("""
-        UPDATE songs
-
-        SET
-            status = 'cancelled',
-            updated_at = ?
-
-        WHERE id = ?
-    """, (
-
-        int(time.time() * 1000),
-        song_id
-    ))
-
-    conn.commit()
-
-    await broadcast_queue()
-
-    await broadcast_player()
+        broadcast_player()
+    )
 
     return {
         "ok": True
@@ -461,40 +378,31 @@ async def cancel_song(song_id: str):
 
 async def next_song():
 
-    current = cursor.execute("""
-        SELECT *
-        FROM songs
+    now = int(time.time() * 1000)
+
+    await db.execute("""
+        UPDATE songs
+
+        SET
+            status = 'done',
+            updated_at = ?
+
         WHERE status = 'playing'
-        LIMIT 1
-    """).fetchone()
+    """, (now,))
 
-    if current:
-
-        cursor.execute("""
-            UPDATE songs
-
-            SET
-                status = 'done',
-                updated_at = ?
-
-            WHERE id = ?
-        """, (
-
-            int(time.time() * 1000),
-            current[0]
-        ))
-
-    next_song = cursor.execute("""
-        SELECT *
+    cursor = await db.execute("""
+        SELECT id
         FROM songs
         WHERE status = 'queued'
         ORDER BY created_at ASC
         LIMIT 1
-    """).fetchone()
+    """)
 
-    if next_song:
+    nxt = await cursor.fetchone()
 
-        cursor.execute("""
+    if nxt:
+
+        await db.execute("""
             UPDATE songs
 
             SET
@@ -504,15 +412,18 @@ async def next_song():
             WHERE id = ?
         """, (
 
-            int(time.time() * 1000),
-            next_song[0]
+            now,
+            nxt[0]
         ))
 
-    conn.commit()
+    await db.commit()
 
-    await broadcast_queue()
+    await asyncio.gather(
 
-    await broadcast_player()
+        broadcast_queue(),
+
+        broadcast_player()
+    )
 
     return {
         "ok": True
@@ -526,13 +437,15 @@ async def next_song():
 
 async def play_now(song_id: str):
 
-    cursor.execute("""
+    now = int(time.time() * 1000)
+
+    await db.execute("""
         UPDATE songs
         SET status = 'queued'
         WHERE status = 'playing'
     """)
 
-    cursor.execute("""
+    await db.execute("""
         UPDATE songs
 
         SET
@@ -542,15 +455,18 @@ async def play_now(song_id: str):
         WHERE id = ?
     """, (
 
-        int(time.time() * 1000),
+        now,
         song_id
     ))
 
-    conn.commit()
+    await db.commit()
 
-    await broadcast_queue()
+    await asyncio.gather(
 
-    await broadcast_player()
+        broadcast_queue(),
+
+        broadcast_player()
+    )
 
     return {
         "ok": True
@@ -564,7 +480,7 @@ async def play_now(song_id: str):
 
 async def remove_song(song_id: str):
 
-    cursor.execute("""
+    await db.execute("""
         UPDATE songs
 
         SET
@@ -578,133 +494,15 @@ async def remove_song(song_id: str):
         song_id
     ))
 
-    conn.commit()
+    await db.commit()
 
-    await broadcast_queue()
+    await asyncio.gather(
 
-    await broadcast_player()
+        broadcast_queue(),
+
+        broadcast_player()
+    )
 
     return {
         "ok": True
     }
-
-# =====================================================
-# SEARCH
-# =====================================================
-
-@app.get("/search")
-
-def search_youtube(q: str):
-
-    if not q:
-        return []
-
-    url = "https://www.googleapis.com/youtube/v3/search"
-
-    params = {
-        "part": "snippet",
-        "q": f"{q} karaoke",
-        "type": "video",
-        "maxResults": 10,
-        "key": API_KEY
-    }
-
-    res = requests.get(
-        url,
-        params=params
-    ).json()
-
-    items = res.get("items", [])
-
-    video_ids = []
-    raw = []
-
-    bad_words = [
-        "live",
-        "reaction",
-        "tutorial",
-        "shorts",
-        "vlog",
-        "interview",
-        "cover by",
-        "instrumental only"
-    ]
-
-    for item in items:
-
-        video_id = (
-            item.get("id", {})
-            .get("videoId")
-        )
-
-        if not video_id:
-            continue
-
-        title = (
-            item["snippet"]["title"]
-            .lower()
-        )
-
-        if any(
-            w in title
-            for w in bad_words
-        ):
-            continue
-
-        video_ids.append(video_id)
-
-        raw.append({
-            "youtubeId": video_id,
-            "title": item["snippet"]["title"],
-            "artist": item["snippet"]["channelTitle"],
-            "thumbnail": item["snippet"]["thumbnails"]["medium"]["url"]
-        })
-
-    if not video_ids:
-        return []
-
-    # ============================================
-    # CHECK EMBEDDABLE
-    # ============================================
-
-    url2 = "https://www.googleapis.com/youtube/v3/videos"
-
-    params2 = {
-        "part": "status",
-        "id": ",".join(video_ids),
-        "key": API_KEY
-    }
-
-    res2 = requests.get(
-        url2,
-        params=params2
-    ).json()
-
-    items2 = res2.get("items", [])
-
-    embeddable_ids = set()
-
-    for v in items2:
-
-        if (
-            v.get("status", {})
-            .get("embeddable")
-        ):
-
-            embeddable_ids.add(v["id"])
-
-    final = [
-
-        v for v in raw
-
-        if v["youtubeId"] in embeddable_ids
-    ]
-
-    final.sort(
-        key=lambda x:
-            "karaoke"
-            in x["title"].lower(),
-        reverse=True
-    )
-
-    return final
