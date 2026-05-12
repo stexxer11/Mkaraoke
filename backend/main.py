@@ -394,3 +394,58 @@ async def remove_song(song_id: str):
     await broadcast_player()
 
     return {"ok": True}
+
+@app.put("/queue/edit/{song_id}")
+async def edit_song(song_id: str, data: dict):
+
+    now = int(time.time() * 1000)
+
+    cursor = await db.execute("""
+        SELECT * FROM songs WHERE id = ?
+    """, (song_id,))
+
+    song = await cursor.fetchone()
+
+    if not song:
+        raise HTTPException(status_code=404, detail="SONG_NOT_FOUND")
+
+    # ==============================
+    # NORMALIZAR DATA (IMPORTANTE)
+    # ==============================
+
+    title = data.get("title")
+    artist = data.get("artist")
+    youtube_id = data.get("youtubeId")
+
+    # ==============================
+    # UPDATE SEGURO
+    # ==============================
+
+    await db.execute("""
+        UPDATE songs
+        SET title = COALESCE(?, title),
+            artist = COALESCE(?, artist),
+            youtube_id = COALESCE(?, youtube_id),
+            updated_at = ?
+        WHERE id = ?
+    """, (
+        title,
+        artist,
+        youtube_id,
+        now,
+        song_id
+    ))
+
+    await db.commit()
+
+    # ==============================
+    # IMPORTANTE: SINCRONIZAR TV
+    # ==============================
+
+    await broadcast_queue()
+    await broadcast_player()
+
+    return {
+        "ok": True,
+        "message": "SONG_UPDATED"
+    }
