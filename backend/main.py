@@ -401,25 +401,16 @@ async def edit_song(song_id: str, data: dict):
     now = int(time.time() * 1000)
 
     cursor = await db.execute("""
-        SELECT * FROM songs WHERE id = ?
+        SELECT status FROM songs WHERE id = ?
     """, (song_id,))
-
     song = await cursor.fetchone()
 
     if not song:
         raise HTTPException(status_code=404, detail="SONG_NOT_FOUND")
 
-    # ==============================
-    # NORMALIZAR DATA (IMPORTANTE)
-    # ==============================
-
     title = data.get("title")
     artist = data.get("artist")
     youtube_id = data.get("youtubeId")
-
-    # ==============================
-    # UPDATE SEGURO
-    # ==============================
 
     await db.execute("""
         UPDATE songs
@@ -438,22 +429,18 @@ async def edit_song(song_id: str, data: dict):
 
     await db.commit()
 
-    # ==============================
-    # IMPORTANTE: SINCRONIZAR TV
-    # ==============================
-
+    # IMPORTANTE: solo actualizar queue (NO reiniciar player si no es playing)
     await broadcast_queue()
-    await broadcast_player()
+
+    # SOLO sincroniza TV si la canción editada es la que está sonando
+    current = await get_current()
+    if current and current["id"] == song_id:
+        await broadcast_player()
 
     return {
         "ok": True,
         "message": "SONG_UPDATED"
     }
-
-
-# =====================================================
-# CANCEL SONG (FIX REAL ENDPOINT)
-# =====================================================
 
 @app.put("/queue/cancel/{song_id}")
 async def cancel_song(song_id: str):
@@ -461,13 +448,14 @@ async def cancel_song(song_id: str):
     now = int(time.time() * 1000)
 
     cursor = await db.execute("""
-        SELECT * FROM songs WHERE id = ?
+        SELECT status FROM songs WHERE id = ?
     """, (song_id,))
-
     song = await cursor.fetchone()
 
     if not song:
         raise HTTPException(status_code=404, detail="SONG_NOT_FOUND")
+
+    was_playing = (song[0] == "playing")
 
     await db.execute("""
         UPDATE songs
@@ -478,8 +466,30 @@ async def cancel_song(song_id: str):
 
     await db.commit()
 
-    await broadcast_queue()
-    await broadcast_player()
+    # SI CANCELAS LA QUE ESTABA SONANDO → AVANZA AUTOMÁTICO
+    if was_playing:
+        cursor = await db.execute("""
+            SELECT id FROM songs
+            WHERE status = 'queued'
+            ORDER BY created_at ASC
+            LIMIT 1
+        """)
+        nxt = await cursor.fetchone()
+
+        if nxt:
+            await db.execute("""
+                UPDATE songs
+                SET status = 'playing', updated_at = ?
+                WHERE id = ?
+            """, (now, nxt[0]))
+
+        await db.commit()
+
+        await broadcast_queue()
+        await broadcast_player()
+    else:
+        # solo cola
+        await broadcast_queue()
 
     return {
         "ok": True,
