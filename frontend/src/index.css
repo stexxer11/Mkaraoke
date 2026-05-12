@@ -224,55 +224,6 @@ body.swal2-shown {
   border-radius: 14px;
   margin-bottom: 10px;
 }
-
-button {
-  cursor: pointer;
-  transition: 0.2s ease;
-}
-
-button:hover {
-  transform: scale(1.05);
-}
-
-/* =====================================================
-   TV UI
-===================================================== */
-
-.tv-wrapper {
-  position: relative;
-  width: 100vw;
-  height: 100vh;
-  background: black;
-  overflow: hidden;
-}
-
-.tv-glow {
-  position: absolute;
-  width: 700px;
-  height: 700px;
-  background: rgba(34, 211, 238, 0.1);
-  filter: blur(120px);
-  border-radius: 50%;
-}
-
-.tv-qr {
-  background: white;
-  padding: 20px;
-  border-radius: 30px;
-  box-shadow: 0 0 80px rgba(34, 211, 238, 0.25);
-}
-
-.tv-info {
-  position: absolute;
-  top: 20px;
-  left: 20px;
-  background: rgba(0,0,0,0.7);
-  padding: 12px 16px;
-  border-radius: 14px;
-  border: 1px solid rgba(34,211,238,0.2);
-  backdrop-filter: blur(10px);
-}
-
 /* =====================================================
    HELPERS
 ===================================================== */
