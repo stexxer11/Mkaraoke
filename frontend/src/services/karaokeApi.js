@@ -1,14 +1,31 @@
 import api from "./api"
 
 // =========================
+// SAFE REQUEST WRAPPER
+// =========================
+
+const safeRequest = async (promise, name) => {
+  try {
+    const res = await promise
+
+    if (!res || !res.data) {
+      throw new Error(`${name}: EMPTY_RESPONSE`)
+    }
+
+    return res.data
+
+  } catch (err) {
+    console.error(`API ERROR [${name}]`, err?.response?.data || err.message)
+    throw err
+  }
+}
+
+// =========================
 // GET QUEUE
 // =========================
 
 export const getQueue = async () => {
-
-  const res = await api.get("/queue")
-
-  return res.data
+  return safeRequest(api.get("/queue"), "GET_QUEUE")
 }
 
 // =========================
@@ -16,45 +33,36 @@ export const getQueue = async () => {
 // =========================
 
 export const addSongApi = async (song) => {
-
-  const res = await api.post(
-    "/queue/add",
-    song
+  return safeRequest(
+    api.post("/queue/add", song),
+    "ADD_SONG"
   )
-
-  return res.data
 }
 
 // =========================
 // EDIT SONG
 // =========================
 
-export const editSongApi = async (
-  id,
-  data
-) => {
+export const editSongApi = async (id, data) => {
+  if (!id) throw new Error("EDIT_SONG: MISSING_ID")
 
-  const res = await api.put(
-    `/queue/edit/${id}`,
-    data
+  return safeRequest(
+    api.put(`/queue/edit/${id}`, data),
+    "EDIT_SONG"
   )
-
-  return res.data
 }
 
 // =========================
 // CANCEL SONG
 // =========================
 
-export const cancelSongApi = async (
-  id
-) => {
+export const cancelSongApi = async (id) => {
+  if (!id) throw new Error("CANCEL_SONG: MISSING_ID")
 
-  const res = await api.put(
-    `/queue/cancel/${id}`
+  return safeRequest(
+    api.put(`/queue/cancel/${id}`),
+    "CANCEL_SONG"
   )
-
-  return res.data
 }
 
 // =========================
@@ -62,40 +70,34 @@ export const cancelSongApi = async (
 // =========================
 
 export const nextSongApi = async () => {
-
-  const res = await api.post(
-    "/queue/next"
+  return safeRequest(
+    api.post("/queue/next"),
+    "NEXT_SONG"
   )
-
-  return res.data
 }
 
 // =========================
 // PLAY NOW
 // =========================
 
-export const playNowApi = async (
-  id
-) => {
+export const playNowApi = async (id) => {
+  if (!id) throw new Error("PLAY_NOW: MISSING_ID")
 
-  const res = await api.post(
-    `/queue/playnow/${id}`
+  return safeRequest(
+    api.post(`/queue/playnow/${id}`),
+    "PLAY_NOW"
   )
-
-  return res.data
 }
 
 // =========================
 // REMOVE SONG
 // =========================
 
-export const removeSongApi = async (
-  id
-) => {
+export const removeSongApi = async (id) => {
+  if (!id) throw new Error("REMOVE_SONG: MISSING_ID")
 
-  const res = await api.delete(
-    `/queue/remove/${id}`
+  return safeRequest(
+    api.delete(`/queue/remove/${id}`),
+    "REMOVE_SONG"
   )
-
-  return res.data
 }
