@@ -6,7 +6,6 @@ import api from "./api"
 
 const safeRequest = async (promise, name) => {
   try {
-
     const res = await promise
 
     if (!res || !res.data) {
@@ -16,12 +15,7 @@ const safeRequest = async (promise, name) => {
     return res.data
 
   } catch (err) {
-
-    console.error(
-      `API ERROR [${name}]`,
-      err?.response?.data || err.message
-    )
-
+    console.error(`API ERROR [${name}]`, err?.response?.data || err.message)
     throw err
   }
 }
@@ -31,10 +25,7 @@ const safeRequest = async (promise, name) => {
 // =========================
 
 export const getQueue = async () => {
-  return safeRequest(
-    api.get("/queue"),
-    "GET_QUEUE"
-  )
+  return safeRequest(api.get("/queue"), "GET_QUEUE")
 }
 
 // =========================
@@ -53,10 +44,7 @@ export const addSongApi = async (song) => {
 // =========================
 
 export const editSongApi = async (id, data) => {
-
-  if (!id) {
-    throw new Error("EDIT_SONG: MISSING_ID")
-  }
+  if (!id) throw new Error("EDIT_SONG: MISSING_ID")
 
   return safeRequest(
     api.put(`/queue/edit/${id}`, data),
@@ -69,10 +57,7 @@ export const editSongApi = async (id, data) => {
 // =========================
 
 export const cancelSongApi = async (id) => {
-
-  if (!id) {
-    throw new Error("CANCEL_SONG: MISSING_ID")
-  }
+  if (!id) throw new Error("CANCEL_SONG: MISSING_ID")
 
   return safeRequest(
     api.put(`/queue/cancel/${id}`),
@@ -96,10 +81,7 @@ export const nextSongApi = async () => {
 // =========================
 
 export const playNowApi = async (id) => {
-
-  if (!id) {
-    throw new Error("PLAY_NOW: MISSING_ID")
-  }
+  if (!id) throw new Error("PLAY_NOW: MISSING_ID")
 
   return safeRequest(
     api.post(`/queue/playnow/${id}`),
@@ -112,68 +94,10 @@ export const playNowApi = async (id) => {
 // =========================
 
 export const removeSongApi = async (id) => {
-
-  if (!id) {
-    throw new Error("REMOVE_SONG: MISSING_ID")
-  }
+  if (!id) throw new Error("REMOVE_SONG: MISSING_ID")
 
   return safeRequest(
     api.delete(`/queue/remove/${id}`),
     "REMOVE_SONG"
-  )
-}
-
-// =========================
-// REPEAT SONG
-// =========================
-
-export const repeatSongApi = async (song) => {
-
-  if (!song) {
-    throw new Error("REPEAT_SONG: MISSING_SONG")
-  }
-
-  return safeRequest(
-    api.post("/queue/repeat", {
-      title: song.title,
-      artist: song.artist,
-      youtubeId: song.youtubeId,
-      ownerId: song.ownerId || "system",
-    }),
-    "REPEAT_SONG"
-  )
-}
-
-// =========================
-// REORDER QUEUE
-// =========================
-
-export const reorderQueueApi = async (queue) => {
-
-  if (!Array.isArray(queue)) {
-    throw new Error("REORDER_QUEUE: INVALID_QUEUE")
-  }
-
-  return safeRequest(
-    api.put("/queue/reorder", {
-      queue,
-    }),
-    "REORDER_QUEUE"
-  )
-}
-
-// =========================
-// RESTART CURRENT SONG
-// =========================
-
-export const restartSongApi = async (id) => {
-
-  if (!id) {
-    throw new Error("RESTART_SONG: MISSING_ID")
-  }
-
-  return safeRequest(
-    api.post(`/queue/restart/${id}`),
-    "RESTART_SONG"
   )
 }
