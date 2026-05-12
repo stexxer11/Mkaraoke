@@ -77,53 +77,96 @@ function MobilePage() {
 
   return (
 
-    <div className="mobile">
+    <div className="min-h-screen bg-black overflow-hidden relative text-white">
 
-      {/* HEADER */}
-      <div className="mobile-header">
+      {/* =========================
+          BACKGROUND GLOW (IGUAL TV)
+      ========================= */}
+      <div className="absolute inset-0 overflow-hidden">
+        <div className="absolute w-[700px] h-[700px] bg-cyan-500/10 blur-3xl rounded-full top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" />
+      </div>
 
-        <h1 className="mobile-title">
-          M<span>KARAOKE</span>
+      {/* =========================
+          HEADER (TV STYLE)
+      ========================= */}
+      <div className="relative z-10 text-center pt-10">
+
+        <h1 className="text-6xl font-black tracking-tight drop-shadow-2xl">
+          M<span className="text-cyan-400">KARAOKE</span>
         </h1>
 
-        <p className="mobile-subtitle">
-          Busca tu canción en YouTube
+        <p className="text-zinc-400 text-lg mt-2">
+          Busca y agrega tu canción
         </p>
 
       </div>
 
-      {/* SEARCH */}
-      <div className="mobile-search">
+      {/* =========================
+          SEARCH (GLASS TV STYLE)
+      ========================= */}
+      <div className="relative z-10 px-4 mt-6">
+
         <input
           value={search}
           onChange={(e) => handleSearch(e.target.value)}
           placeholder={editMode ? "Buscar reemplazo..." : "Buscar canción..."}
-          className="mobile-input"
+          className="
+            w-full
+            px-4
+            py-4
+            rounded-2xl
+            bg-black/60
+            border border-cyan-500/20
+            backdrop-blur-xl
+            text-white
+            outline-none
+            focus:border-cyan-400/60
+            focus:shadow-[0_0_25px_rgba(34,211,238,0.25)]
+          "
         />
+
       </div>
 
-      {/* RESULTS */}
-      <div className="mobile-results">
+      {/* =========================
+          RESULTS
+      ========================= */}
+      <div className="relative z-10 px-4 mt-6 space-y-3">
 
         {loading && (
-          <p className="loading">Buscando...</p>
+          <p className="text-zinc-400">Buscando...</p>
         )}
 
         {results.map(song => (
-          <div key={song.youtubeId} className="song-card">
+          <div
+            key={song.youtubeId}
+            className="
+              flex items-center gap-3
+              p-3 rounded-2xl
+              bg-black/60
+              border border-cyan-500/15
+              backdrop-blur-xl
+            "
+          >
 
-            <div className="song-thumb">
-              <img
-                src={`https://img.youtube.com/vi/${song.youtubeId}/hqdefault.jpg`}
-              />
+            <img
+              src={`https://img.youtube.com/vi/${song.youtubeId}/hqdefault.jpg`}
+              className="w-16 h-16 rounded-xl object-cover"
+            />
+
+            <div className="flex-1">
+              <p className="font-bold">{song.title}</p>
+              <p className="text-sm text-zinc-400">{song.artist}</p>
             </div>
 
-            <div className="song-info">
-              <p className="song-title">{song.title}</p>
-              <p className="song-artist">{song.artist}</p>
-            </div>
-
-            <button className="song-btn">
+            <button
+              className="
+                w-10 h-10
+                rounded-xl
+                bg-cyan-500/15
+                text-cyan-300
+                font-bold
+              "
+            >
               +
             </button>
 
@@ -132,148 +175,15 @@ function MobilePage() {
 
       </div>
 
-      {/* FOOTER */}
-      <div className="mobile-footer">
+      {/* =========================
+          FOOTER
+      ========================= */}
+      <div className="absolute bottom-3 w-full text-center text-zinc-500 text-sm">
         Cola global: {queue.length}
       </div>
 
-      {/* =========================
-          CSS INTERNO
-      ========================= */}
-      <style jsx>{`
-
-        .mobile {
-          min-height: 100vh;
-          background: linear-gradient(135deg, #000, #0b0b0f, #0c4a6e);
-          color: white;
-          display: flex;
-          flex-direction: column;
-        }
-
-        /* HEADER */
-        .mobile-header {
-          text-align: center;
-          padding: 24px 16px;
-        }
-
-        .mobile-title {
-          font-size: 3rem;
-          font-weight: 900;
-          letter-spacing: -1px;
-          text-shadow:
-            0 0 10px rgba(34, 211, 238, 0.5),
-            0 0 25px rgba(34, 211, 238, 0.25),
-            0 0 45px rgba(34, 211, 238, 0.15);
-        }
-
-        .mobile-title span {
-          color: #22d3ee;
-          text-shadow:
-            0 0 10px rgba(34, 211, 238, 0.7),
-            0 0 30px rgba(34, 211, 238, 0.35);
-        }
-
-        .mobile-subtitle {
-          color: #a1a1aa;
-          margin-top: 6px;
-        }
-
-        /* SEARCH */
-        .mobile-search {
-          padding: 10px 16px;
-        }
-
-        .mobile-input {
-          width: 100%;
-          padding: 14px;
-          border-radius: 14px;
-          border: 1px solid rgba(34, 211, 238, 0.2);
-          background: rgba(0,0,0,0.6);
-          color: white;
-          backdrop-filter: blur(10px);
-          outline: none;
-        }
-
-        .mobile-input:focus {
-          border-color: rgba(34,211,238,0.6);
-          box-shadow: 0 0 20px rgba(34,211,238,0.25);
-        }
-
-        /* RESULTS */
-        .mobile-results {
-          flex: 1;
-          padding: 10px 16px;
-          display: flex;
-          flex-direction: column;
-          gap: 12px;
-        }
-
-        .loading {
-          color: #71717a;
-        }
-
-        .song-card {
-          display: flex;
-          align-items: center;
-          gap: 12px;
-          padding: 10px;
-          border-radius: 16px;
-
-          background: rgba(0,0,0,0.6);
-          border: 1px solid rgba(34,211,238,0.15);
-
-          backdrop-filter: blur(12px);
-          transition: 0.2s;
-        }
-
-        .song-card:hover {
-          transform: scale(1.01);
-          border-color: rgba(34,211,238,0.35);
-        }
-
-        .song-thumb img {
-          width: 64px;
-          height: 64px;
-          border-radius: 12px;
-          object-fit: cover;
-        }
-
-        .song-info {
-          flex: 1;
-        }
-
-        .song-title {
-          font-weight: 700;
-        }
-
-        .song-artist {
-          font-size: 0.8rem;
-          color: #a1a1aa;
-        }
-
-        .song-btn {
-          width: 36px;
-          height: 36px;
-          border-radius: 10px;
-          border: none;
-          background: rgba(34,211,238,0.15);
-          color: #22d3ee;
-          font-size: 20px;
-          cursor: pointer;
-        }
-
-        /* FOOTER */
-        .mobile-footer {
-          padding: 12px;
-          text-align: center;
-          font-size: 0.8rem;
-          color: #71717a;
-          border-top: 1px solid rgba(255,255,255,0.05);
-        }
-
-      `}</style>
-
     </div>
+
   )
 }
 
