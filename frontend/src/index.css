@@ -80,3 +80,135 @@ body {
 body.swal2-shown {
   overflow: hidden !important;
 }
+
+/* =========================
+   MOBILE PAGE LAYOUT
+========================= */
+
+.mobile {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: radial-gradient(circle at top, #0a0a0a 0%, #050505 60%, #000 100%);
+  color: white;
+}
+
+/* HEADER */
+.mobile-header {
+  padding: 18px;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+  backdrop-filter: blur(12px);
+  background: rgba(9, 9, 11, 0.85);
+  position: sticky;
+  top: 0;
+  z-index: 50;
+}
+
+.mobile-title {
+  font-size: 28px;
+  font-weight: 900;
+  color: #22d3ee;
+}
+
+.mobile-subtitle {
+  color: #a1a1aa;
+  margin-top: 4px;
+  font-size: 14px;
+}
+
+/* SEARCH */
+.mobile-search {
+  padding: 16px;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+}
+
+.mobile-input {
+  width: 100%;
+  padding: 14px;
+  border-radius: 16px;
+  background: #18181b;
+  border: 1px solid rgba(255,255,255,0.08);
+  outline: none;
+  color: white;
+}
+
+/* RESULTS */
+.mobile-results {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* CARD */
+.song-card {
+  background: #18181b;
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 20px;
+  padding: 10px;
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.song-thumb {
+  width: 90px;
+  height: 90px;
+  border-radius: 14px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.song-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.song-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.song-title {
+  font-weight: 700;
+  font-size: 14px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.song-artist {
+  color: #a1a1aa;
+  font-size: 12px;
+  margin-top: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* BUTTON */
+.song-btn {
+  background: #22d3ee;
+  color: black;
+  font-weight: 900;
+  padding: 10px 14px;
+  border-radius: 14px;
+  border: none;
+}
+
+/* FOOTER */
+.mobile-footer {
+  padding: 12px;
+  border-top: 1px solid rgba(255,255,255,0.08);
+  text-align: center;
+  color: #71717a;
+  background: #09090b;
+}
+
+/* UTIL */
+.scrollbar-hide::-webkit-scrollbar {
+  width: 0;
+}
