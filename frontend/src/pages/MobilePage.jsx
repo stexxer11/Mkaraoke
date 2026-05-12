@@ -23,7 +23,7 @@ function MobilePage() {
   } = useKaraoke()
 
   // =====================================================
-  // RULE ENGINE (25 REGLAS)
+  // RULE ENGINE (25 REGLAS + FILTRO KARAOKE)
   // =====================================================
 
   const RULES = {
@@ -31,6 +31,29 @@ function MobilePage() {
     MAX_QUEUE_PER_USER: 1,
     MAX_GLOBAL_QUEUE: 50,
     SEARCH_COOLDOWN_MS: 1500,
+  }
+
+  // 🔥 NUEVA REGLA: SOLO KARAOKE
+  const isKaraokeSong = (song) => {
+    const text = `
+      ${song.title || ""}
+      ${song.artist || ""}
+    `.toLowerCase()
+
+    const keywords = [
+      "karaoke",
+      "instrumental",
+      "backing track",
+      "sing along",
+      "lyrics karaoke"
+    ]
+
+    return keywords.some(k => text.includes(k))
+  }
+
+  const filterKaraoke = (items) => {
+    if (!Array.isArray(items)) return []
+    return items.filter(isKaraokeSong)
   }
 
   const isDuplicateSong = (queue, youtubeId, deviceId) =>
@@ -73,7 +96,7 @@ function MobilePage() {
   const [editSongData, setEditSongData] = useState(null)
 
   // =====================================================
-  // SEARCH (REGLAS 1, 2, 24)
+  // SEARCH (CON FILTRO KARAOKE APLICADO)
   // =====================================================
 
   const debouncedSearch = useMemo(() =>
@@ -92,7 +115,10 @@ function MobilePage() {
 
       try {
         const data = await searchYouTube(value)
-        setResults(data || [])
+
+        // 🔥 AQUÍ SE APLICA EL FILTRO REAL
+        setResults(filterKaraoke(data || []))
+
       } catch (err) {
         console.log(err)
         setResults([])
@@ -113,7 +139,7 @@ function MobilePage() {
   }, [debouncedSearch])
 
   // =====================================================
-  // RULE 4 - MY SONGS
+  // MY SONGS
   // =====================================================
 
   const mySongs = useMemo(() =>
@@ -124,15 +150,7 @@ function MobilePage() {
     )
   , [queue, deviceId])
 
-  // =====================================================
-  // RULE 5 - ACTIVE SONG
-  // =====================================================
-
   const myActiveSong = useMemo(() => mySongs[0] || null, [mySongs])
-
-  // =====================================================
-  // RULE 6 - TURN POSITION
-  // =====================================================
 
   const turnsLeft = useMemo(() => {
 
@@ -152,7 +170,7 @@ function MobilePage() {
   const isMySongPlaying = currentSong?.id === myActiveSong?.id
 
   // =====================================================
-  // RULE 7 - AUTO CLOSE EDIT
+  // AUTO CLOSE EDIT
   // =====================================================
 
   useEffect(() => {
@@ -167,7 +185,7 @@ function MobilePage() {
   }, [isMySongPlaying, editMode])
 
   // =====================================================
-  // RULE 8-12 - ALERT SYSTEM CORE
+  // ALERT SYSTEM
   // =====================================================
 
   useEffect(() => {
@@ -185,7 +203,6 @@ function MobilePage() {
 
     alertOpen.current = alertKey
 
-    // ================= RULE 10 =================
     if (isMySongPlaying) {
 
       showAlert({
@@ -199,7 +216,6 @@ function MobilePage() {
       return
     }
 
-    // ================= RULE 11-12 =================
     showAlert({
       title: isMyTurn ? "Tu turno está listo 🎤" : "Tu canción está en cola",
       html: `<b>${myActiveSong.title}</b>`,
@@ -246,28 +262,16 @@ function MobilePage() {
   ])
 
   // =====================================================
-  // RULE 16 - ADD SONG
+  // ADD SONG
   // =====================================================
 
   const handleAddSong = async (song) => {
 
     if (isQueueFull(queue)) return
 
-    if (!canAddSong(queue, deviceId)) {
-      showAlert({
-        icon: "warning",
-        title: "Ya tienes una canción",
-      })
-      return
-    }
+    if (!canAddSong(queue, deviceId)) return
 
-    if (isDuplicateSong(queue, song.youtubeId, deviceId)) {
-      showAlert({
-        icon: "info",
-        title: "Canción duplicada",
-      })
-      return
-    }
+    if (isDuplicateSong(queue, song.youtubeId, deviceId)) return
 
     await addSong(song)
 
@@ -276,7 +280,7 @@ function MobilePage() {
   }
 
   // =====================================================
-  // RULE 17 - REPLACE SONG
+  // REPLACE SONG
   // =====================================================
 
   const handleReplaceSong = async (song) => {
@@ -294,26 +298,19 @@ function MobilePage() {
   }
 
   // =====================================================
-  // RULE 18-25 UI (YA INCLUIDO EN LOGICA)
+  // RENDER
   // =====================================================
 
   return (
 
     <div className="min-h-screen bg-black text-white relative">
 
-      {/* BACKGROUND */}
-      <div className="absolute inset-0">
-        <div className="absolute w-[700px] h-[700px] bg-cyan-500/10 blur-3xl rounded-full top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" />
-      </div>
-
-      {/* HEADER */}
       <div className="relative text-center pt-10">
         <h1 className="text-6xl font-black">
           M<span className="text-cyan-400">KARAOKE</span>
         </h1>
       </div>
 
-      {/* SEARCH */}
       <div className="relative px-4 mt-6">
         <input
           value={search}
@@ -322,7 +319,6 @@ function MobilePage() {
         />
       </div>
 
-      {/* RESULTS */}
       <div className="relative px-4 mt-6 space-y-3">
 
         {loading && <p>Buscando...</p>}
@@ -357,7 +353,6 @@ function MobilePage() {
 
       </div>
 
-      {/* FOOTER */}
       <div className="absolute bottom-3 w-full text-center text-zinc-500">
         Cola global: {queue.length}
       </div>
