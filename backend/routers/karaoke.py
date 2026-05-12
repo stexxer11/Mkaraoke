@@ -1,10 +1,11 @@
-from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect, Query
 from sqlalchemy.orm import Session
 from database import SessionLocal
 import models
 from schemas import SongCreate, SongUpdate
 from ws_manager import manager
-import time
+import os
+import requests
 
 router = APIRouter()
 
@@ -18,6 +19,42 @@ def get_db():
         yield db
     finally:
         db.close()
+
+# =====================================================
+# SEARCH YOUTUBE (FIX QUE TE FALTABA)
+# =====================================================
+
+@router.get("/search")
+async def search(q: str = Query(...)):
+
+    api_key = os.getenv("YOUTUBE_API_KEY")
+
+    if not api_key:
+        return []
+
+    url = (
+        "https://www.googleapis.com/youtube/v3/search"
+        f"?part=snippet&type=video&maxResults=10&q={q}&key={api_key}"
+    )
+
+    try:
+        res = requests.get(url)
+        data = res.json()
+
+        results = []
+
+        for item in data.get("items", []):
+            results.append({
+                "youtubeId": item["id"]["videoId"],
+                "title": item["snippet"]["title"],
+                "artist": item["snippet"]["channelTitle"]
+            })
+
+        return results
+
+    except Exception as e:
+        print("SEARCH ERROR:", e)
+        return []
 
 # =====================================================
 # QUEUE
@@ -54,7 +91,7 @@ async def broadcast_queue(db: Session):
     })
 
 # =====================================================
-# ADD SONG (MULTIUSER SAFE)
+# ADD SONG
 # =====================================================
 
 @router.post("/song")
@@ -66,10 +103,7 @@ async def add_song(song: SongCreate, db: Session = Depends(get_db)):
     ).first()
 
     if existing:
-        return {
-            "ok": False,
-            "error": "USER_ALREADY_HAS_SONG"
-        }
+        return {"ok": False, "error": "USER_ALREADY_HAS_SONG"}
 
     new_song = models.Song(
         title=song.title,
@@ -102,7 +136,6 @@ async def cancel_song(song_id: str, db: Session = Depends(get_db)):
         return {"ok": False, "error": "NOT_FOUND"}
 
     song.status = "cancelled"
-
     db.commit()
 
     await broadcast_queue(db)
@@ -150,7 +183,6 @@ async def edit_song(song_id: str, data: SongUpdate, db: Session = Depends(get_db
 
 current_song = None
 
-
 @router.post("/next")
 async def next_song(db: Session = Depends(get_db)):
 
@@ -172,10 +204,7 @@ async def next_song(db: Session = Depends(get_db)):
 
         current_song = None
 
-        await manager.broadcast({
-            "type": "STOP_VIDEO"
-        })
-
+        await manager.broadcast({"type": "STOP_VIDEO"})
         await broadcast_queue(db)
 
         return {"message": "EMPTY"}
@@ -221,7 +250,6 @@ async def play_now(song_id: str, db: Session = Depends(get_db)):
         return {"ok": False}
 
     song.status = "playing"
-
     db.commit()
 
     current_song = {
@@ -260,7 +288,6 @@ async def ws(websocket: WebSocket):
         })
 
         if current_song:
-
             await websocket.send_json({
                 "type": "LOAD_VIDEO",
                 "song": current_song
