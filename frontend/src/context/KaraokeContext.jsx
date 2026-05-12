@@ -28,16 +28,20 @@ export function KaraokeProvider({ children }) {
   // =====================================================
 
   const [deviceId] = useState(() => {
+
     const saved = localStorage.getItem("mk_device_id")
+
     if (saved) return saved
 
     const id = crypto.randomUUID()
+
     localStorage.setItem("mk_device_id", id)
+
     return id
   })
 
   // =====================================================
-  // STATE (SOURCE OF TRUTH)
+  // STATE
   // =====================================================
 
   const [queue, setQueue] = useState([])
@@ -47,16 +51,20 @@ export function KaraokeProvider({ children }) {
   const reconnectRef = useRef(0)
 
   // =====================================================
-  // DERIVED STATE (GLOBAL FIX)
+  // DERIVED STATE
   // =====================================================
 
   const currentSong = useMemo(() => {
-    return queue.find(s => s.status === "playing") || null
+    return queue.find(
+      s => s.status === "playing"
+    ) || null
   }, [queue])
 
   const activeQueue = useMemo(() => {
     return queue.filter(
-      s => s.status === "queued" || s.status === "playing"
+      s =>
+        s.status === "queued" ||
+        s.status === "playing"
     )
   }, [queue])
 
@@ -70,7 +78,9 @@ export function KaraokeProvider({ children }) {
 
   const visibleQueue = useMemo(() => {
     return queue.filter(
-      s => s.status !== "done" && s.status !== "cancelled"
+      s =>
+        s.status !== "done" &&
+        s.status !== "cancelled"
     )
   }, [queue])
 
@@ -79,13 +89,16 @@ export function KaraokeProvider({ children }) {
   // =====================================================
 
   const safeSend = (data) => {
+
     const ws = socketRef.current
+
     if (!ws || ws.readyState !== 1) return
+
     ws.send(JSON.stringify(data))
   }
 
   // =====================================================
-  // WEBSOCKET CONNECTION (FIXED SYNC)
+  // WS
   // =====================================================
 
   useEffect(() => {
@@ -102,11 +115,11 @@ export function KaraokeProvider({ children }) {
       socketRef.current = ws
 
       ws.onopen = () => {
+
         console.log("WS CONNECTED")
 
         reconnectRef.current = 0
 
-        // sync inicial
         safeSend({
           type: "GET_STATE",
           deviceId
@@ -114,21 +127,22 @@ export function KaraokeProvider({ children }) {
       }
 
       ws.onmessage = (event) => {
+
         try {
 
           const data = JSON.parse(event.data)
 
-          // =================================================
-          // QUEUE UPDATE (MAIN SOURCE)
-          // =================================================
+          // =============================================
+          // QUEUE UPDATE
+          // =============================================
 
           if (data.type === "queue_update") {
             setQueue(data.queue || [])
           }
 
-          // =================================================
-          // VIDEO CONTROL (FORCE RELOAD TV)
-          // =================================================
+          // =============================================
+          // PLAYER UPDATE
+          // =============================================
 
           if (
             data.type === "LOAD_VIDEO" ||
@@ -177,19 +191,27 @@ export function KaraokeProvider({ children }) {
   // =====================================================
 
   const addSong = async (songData) => {
+
     try {
+
       return await addSongApi({
         ownerId: deviceId,
         title: songData.title,
         artist: songData.artist,
         youtubeId: songData.youtubeId,
       })
+
     } catch (err) {
-      return { ok: false, error: err?.message }
+
+      return {
+        ok: false,
+        error: err?.message
+      }
     }
   }
 
   const editSong = async (id, data) => {
+
     try {
       return await editSongApi(id, data)
     } catch {
@@ -198,6 +220,7 @@ export function KaraokeProvider({ children }) {
   }
 
   const cancelSong = async (id) => {
+
     try {
       return await cancelSongApi(id)
     } catch {
@@ -206,6 +229,7 @@ export function KaraokeProvider({ children }) {
   }
 
   const playNextSong = async () => {
+
     try {
       return await nextSongApi()
     } catch (err) {
@@ -214,6 +238,7 @@ export function KaraokeProvider({ children }) {
   }
 
   const playNow = async (id) => {
+
     try {
       return await playNowApi(id)
     } catch {
@@ -222,6 +247,7 @@ export function KaraokeProvider({ children }) {
   }
 
   const removeSongById = async (id) => {
+
     try {
       return await removeSongApi(id)
     } catch (err) {
@@ -230,45 +256,97 @@ export function KaraokeProvider({ children }) {
   }
 
   // =====================================================
+  // NEW ADMIN ACTIONS
+  // =====================================================
+
+  const repeatSong = async (song) => {
+
+    try {
+
+      return await repeatSongApi(song)
+
+    } catch (err) {
+
+      console.log(err)
+
+      return { ok: false }
+    }
+  }
+
+  const reorderQueue = async (newQueue) => {
+
+    try {
+
+      const ids = newQueue
+        .filter(s => s.status === "queued")
+        .map(s => s.id)
+
+      return await reorderQueueApi(ids)
+
+    } catch (err) {
+
+      console.log(err)
+
+      return { ok: false }
+    }
+  }
+
+  const restartSong = async (id) => {
+
+    try {
+
+      return await restartSongApi(id)
+
+    } catch (err) {
+
+      console.log(err)
+
+      return { ok: false }
+    }
+  }
+
+  // =====================================================
   // PROVIDER
   // =====================================================
 
   return (
-    <KaraokeContext.Provider value={{
+    <KaraokeContext.Provider
+      value={{
 
-      // STATE
-      queue,
-      visibleQueue,
-      activeQueue,
-      currentSong,
+        // STATE
+        queue,
+        visibleQueue,
+        activeQueue,
+        currentSong,
 
-      // PLAYER
-      playerVersion,
+        // PLAYER
+        playerVersion,
 
-      // USER
-      deviceId,
-      mySongs,
-      hasActiveSong,
+        // USER
+        deviceId,
+        mySongs,
+        hasActiveSong,
 
-      // ACTIONS
-      // ADMIN ACTIONS
-      playNow,
-      removeSongById,
-      repeatSong,
-      reorderQueue,
-      restartSong,
+        // ACTIONS
+        addSong,
+        editSong,
+        cancelSong,
 
-      // PLAYER ACTIONS
-      playNextSong,
+        // PLAYER ACTIONS
+        playNextSong,
 
-      // ADMIN ACTIONS
-      playNow,
-      removeSongById,
+        // ADMIN ACTIONS
+        playNow,
+        removeSongById,
+        repeatSong,
+        reorderQueue,
+        restartSong,
 
-      // INTERNAL
-      safeSend
+        // INTERNAL
+        safeSend
 
-    }}>
+      }}
+    >
       {children}
     </KaraokeContext.Provider>
   )
@@ -277,37 +355,3 @@ export function KaraokeProvider({ children }) {
 export function useKaraoke() {
   return useContext(KaraokeContext)
 }
-
-const repeatSong = async (song) => {
-  try {
-    return await repeatSongApi(song)
-  } catch (err) {
-    console.log(err)
-    return { ok: false }
-  }
-}
-
-const reorderQueue = async (newQueue) => {
-  try {
-
-    const ids = newQueue
-      .filter(s => s.status === "queued")
-      .map(s => s.id)
-
-    return await reorderQueueApi(ids)
-
-  } catch (err) {
-    console.log(err)
-    return { ok: false }
-  }
-}
-
-const restartSong = async (id) => {
-  try {
-    return await restartSongApi(id)
-  } catch (err) {
-    console.log(err)
-    return { ok: false }
-  }
-}
-
