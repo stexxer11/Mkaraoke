@@ -39,10 +39,9 @@ function MobilePage() {
 
   const canAddSong = (queue, deviceId) => {
     const mySongs = queue.filter(
-      s =>
-        s.ownerId === deviceId &&
-        s.status !== "done" &&
-        s.status !== "cancelled"
+      s => s.ownerId === deviceId &&
+      s.status !== "done" &&
+      s.status !== "cancelled"
     )
     return mySongs.length < RULES.MAX_QUEUE_PER_USER
   }
@@ -65,38 +64,25 @@ function MobilePage() {
   const [editMode, setEditMode] = useState(false)
   const [editSongData, setEditSongData] = useState(null)
 
-  // =========================
-  // MY SONG
-  // =========================
+  const isKaraokeQuery = (text) => {
+    const keywords = [
+      "karaoke",
+      "instrumental",
+      "lyrics",
+      "letra",
+      "cover",
+      "backing track"
+    ]
 
-  const mySongs = useMemo(() =>
-    queue.filter(song =>
-      song.ownerId === deviceId &&
-      song.status !== "done" &&
-      song.status !== "cancelled"
+    return keywords.some(k =>
+      text.toLowerCase().includes(k)
     )
-  , [queue, deviceId])
-
-  const myActiveSong = mySongs[0] || null
-
-  const getTurnsLeft = () => {
-    if (!myActiveSong) return 0
-
-    const activeQueue = queue.filter(
-      s => s.status === "queued" || s.status === "playing"
-    )
-
-    const index = activeQueue.findIndex(s => s.id === myActiveSong.id)
-    return index === -1 ? 0 : index
   }
 
-  const turnsLeftValue = getTurnsLeft()
-  const isMyTurn = turnsLeftValue === 0
-  const isMySongPlaying = currentSong?.id === myActiveSong?.id
-
-  // =========================
-  // SEARCH
-  // =========================
+  const forceKaraokeQuery = (text) => {
+    if (isKaraokeQuery(text)) return text
+    return `${text} karaoke instrumental lyrics`
+  }
 
   const debouncedSearch = useMemo(() =>
     debounce(async (value) => {
@@ -113,7 +99,7 @@ function MobilePage() {
       setLoading(true)
 
       try {
-        const data = await searchYouTube(value)
+        const data = await searchYouTube(forceKaraokeQuery(value))
         setResults(data || [])
       } catch (err) {
         console.log(err)
@@ -130,114 +116,104 @@ function MobilePage() {
     debouncedSearch(value)
   }
 
-  useEffect(() => {
-    return () => debouncedSearch.cancel()
-  }, [debouncedSearch])
+useEffect(() => {
 
-  // =========================
-  // ALERT SYSTEM
-  // =========================
+  if (!myActiveSong) {
+    alertOpen.current = null
+    if (Swal.isVisible()) Swal.close()
+    return
+  }
 
-  useEffect(() => {
+  const turnsLeftValue = getTurnsLeft()
 
-    if (!myActiveSong) {
-      alertOpen.current = null
-      if (Swal.isVisible()) Swal.close()
-      return
-    }
+  const alertKey =
+    `${myActiveSong.id}-${turnsLeftValue}-${currentSong?.id}`
 
-    const alertKey =
-      `${myActiveSong.id}-${turnsLeftValue}-${currentSong?.id}`
+  if (alertOpen.current === alertKey) return
+  alertOpen.current = alertKey
 
-    if (alertOpen.current === alertKey) return
-    alertOpen.current = alertKey
-
-    if (isMySongPlaying) {
-
-      showAlert({
-        title: "Disfruta tu canción 🎤",
-        html: `<b>${myActiveSong.title}</b>`,
-        background: "#000",
-        color: "#06b6d4",
-        showConfirmButton: false,
-        allowOutsideClick: false,
-        allowEscapeKey: false,
-      })
-
-      return
-    }
+  if (isMySongPlaying) {
 
     showAlert({
-      title: isMyTurn
-        ? "Tu turno está listo 🎤"
-        : `Te faltan ${turnsLeftValue} turno(s)`,
-
-      html: `
-        <b>${myActiveSong.title}</b>
-        <br/>
-        <span style="opacity:0.7;font-size:13px">
-          ${isMyTurn ? "Listo para cantar" : "Espera tu turno"}
-        </span>
-      `,
-
+      title: "Disfruta tu canción 🎤",
+      html: `<b>${myActiveSong.title}</b>`,
       background: "#000",
       color: "#06b6d4",
-
       showConfirmButton: false,
-
-      showDenyButton: true,
-      denyButtonText: "Editar canción",
-
-      showCancelButton: true,
-      cancelButtonText: "Cancelar turno",
-
-    }).then(res => {
-
-      if (res.isDenied && !isMySongPlaying) {
-        setEditMode(true)
-        setEditSongData(myActiveSong)
-        setSearch("")
-        setResults([])
-      }
-
-      if (res.dismiss === Swal.DismissReason.cancel) {
-
-        showAlert({
-          title: "Eliminar de la cola",
-          text: "¿Seguro que quieres cancelar tu canción?",
-          icon: "warning",
-          showCancelButton: true,
-          confirmButtonText: "Sí, eliminar",
-          cancelButtonText: "No"
-        }).then(async confirm => {
-
-          if (confirm.isConfirmed) {
-            await cancelSong(myActiveSong.id)
-
-            setEditMode(false)
-            setEditSongData(null)
-            setSearch("")
-            setResults([])
-          }
-
-        })
-      }
-
     })
 
-  }, [
-    queue,
-    currentSong,
-    myActiveSong,
-    turnsLeftValue,
-    isMyTurn,
-    isMySongPlaying,
-    deviceId
-  ])
+    return
+  }
 
-  // =========================
-  // ADD
-  // =========================
+  showAlert({
+    title: isMyTurn
+      ? "Tu turno está listo 🎤"
+      : `Te faltan ${turnsLeftValue} turno(s)`,
+
+    html: `
+      <b>${myActiveSong.title}</b>
+      <br/>
+      <span style="opacity:0.7;font-size:13px">
+        ${isMyTurn ? "Listo para cantar" : "Espera tu turno"}
+      </span>
+    `,
+
+    background: "#000",
+    color: "#06b6d4",
+
+    showConfirmButton: false,
+
+    showDenyButton: true,
+    denyButtonText: "Editar canción",
+
+    showCancelButton: true,
+    cancelButtonText: "Cancelar turno",
+
+  }).then(res => {
+
+    if (res.isDenied && !isMySongPlaying) {
+      setEditMode(true)
+      setEditSongData(myActiveSong)
+      setSearch("")
+      setResults([])
+    }
+
+    if (res.dismiss === Swal.DismissReason.cancel) {
+
+      showAlert({
+        title: "Eliminar de la cola",
+        text: "¿Seguro que quieres cancelar tu canción?",
+        icon: "warning",
+        showCancelButton: true,
+        confirmButtonText: "Sí, eliminar",
+        cancelButtonText: "No"
+      }).then(async confirm => {
+
+        if (confirm.isConfirmed) {
+
+          await cancelSong(myActiveSong.id)
+
+          // 🔥 FIX UI INMEDIATO (evita delay visual)
+          setEditMode(false)
+          setEditSongData(null)
+          setSearch("")
+          setResults([])
+
+        }
+
+      })
+    }
+
+  })
+
+}, [
+  queue,
+  currentSong,
+  myActiveSong,
+  isMyTurn,
+  isMySongPlaying,
+  deviceId
+])
 
   const handleAddSong = async (song) => {
 
@@ -265,13 +241,10 @@ function MobilePage() {
     setResults([])
   }
 
-  // =========================
-  // EDIT
-  // =========================
-
   const handleReplaceSong = async (song) => {
 
     if (!editSongData) return
+
     if (currentSong?.id === editSongData.id) return
 
     await editSong(editSongData.id, song)
@@ -283,6 +256,7 @@ function MobilePage() {
   }
 
   return (
+
     <div className="min-h-screen bg-black text-white relative pb-24 overflow-y-auto">
 
       <div className="absolute inset-0 pointer-events-none">
@@ -325,7 +299,9 @@ function MobilePage() {
             <button
               className="px-4 py-2 bg-cyan-500 text-black rounded-lg text-lg active:scale-95"
               onClick={() =>
-                editMode ? handleReplaceSong(song) : handleAddSong(song)
+                editMode
+                  ? handleReplaceSong(song)
+                  : handleAddSong(song)
               }
             >
               +
