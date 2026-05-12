@@ -11,45 +11,6 @@ import Swal from "sweetalert2"
 import { useKaraoke } from "../context/KaraokeContext"
 import { searchYouTube } from "../services/youtubeApi"
 
-// =========================
-// RULES ENGINE
-// =========================
-
-const RULES = {
-  MIN_SEARCH_LENGTH: 3,
-  MAX_QUEUE_PER_USER: 1,
-  MAX_GLOBAL_QUEUE: 50,
-  SEARCH_COOLDOWN_MS: 1500,
-}
-
-const isDuplicateSong = (queue, youtubeId, deviceId) => {
-  return queue.some(
-    s =>
-      s.youtubeId === youtubeId &&
-      s.ownerId === deviceId &&
-      s.status !== "done" &&
-      s.status !== "cancelled"
-  )
-}
-
-const canAddSong = (queue, deviceId) => {
-  const mySongs = queue.filter(
-    s => s.ownerId === deviceId && s.status !== "done" && s.status !== "cancelled"
-  )
-  return mySongs.length < RULES.MAX_QUEUE_PER_USER
-}
-
-const isQueueFull = (queue) => queue.length >= RULES.MAX_GLOBAL_QUEUE
-
-const showAlert = (config) => {
-  if (Swal.isVisible()) return
-  return Swal.fire(config)
-}
-
-// =========================
-// COMPONENT
-// =========================
-
 function MobilePage() {
 
   const {
@@ -61,9 +22,48 @@ function MobilePage() {
     currentSong,
   } = useKaraoke()
 
-  // =========================
+  // =====================================================
+  // RULE ENGINE (25 REGLAS)
+  // =====================================================
+
+  const RULES = {
+    MIN_SEARCH_LENGTH: 3,
+    MAX_QUEUE_PER_USER: 1,
+    MAX_GLOBAL_QUEUE: 50,
+    SEARCH_COOLDOWN_MS: 1500,
+  }
+
+  const isDuplicateSong = (queue, youtubeId, deviceId) =>
+    queue.some(s =>
+      s.youtubeId === youtubeId &&
+      s.ownerId === deviceId &&
+      s.status !== "done" &&
+      s.status !== "cancelled"
+    )
+
+  const canAddSong = (queue, deviceId) => {
+    const mySongs = queue.filter(
+      s => s.ownerId === deviceId &&
+      s.status !== "done" &&
+      s.status !== "cancelled"
+    )
+    return mySongs.length < RULES.MAX_QUEUE_PER_USER
+  }
+
+  const isQueueFull = (queue) =>
+    queue.length >= RULES.MAX_GLOBAL_QUEUE
+
+  const showAlert = (config) => {
+    if (Swal.isVisible()) return
+    return Swal.fire(config)
+  }
+
+  const alertOpen = useRef(null)
+  const lastSearch = useRef(0)
+
+  // =====================================================
   // STATES
-  // =========================
+  // =====================================================
 
   const [search, setSearch] = useState("")
   const [results, setResults] = useState([])
@@ -72,12 +72,9 @@ function MobilePage() {
   const [editMode, setEditMode] = useState(false)
   const [editSongData, setEditSongData] = useState(null)
 
-  const alertOpen = useRef(null)
-  const lastSearch = useRef(0)
-
-  // =========================
-  // SEARCH CONTROLLED
-  // =========================
+  // =====================================================
+  // SEARCH (REGLAS 1, 2, 24)
+  // =====================================================
 
   const debouncedSearch = useMemo(() =>
     debounce(async (value) => {
@@ -115,31 +112,38 @@ function MobilePage() {
     return () => debouncedSearch.cancel()
   }, [debouncedSearch])
 
-  // =========================
-  // MY SONGS LOGIC
-  // =========================
+  // =====================================================
+  // RULE 4 - MY SONGS
+  // =====================================================
 
-  const mySongs = useMemo(() => {
-    return queue.filter(song =>
+  const mySongs = useMemo(() =>
+    queue.filter(song =>
       song.ownerId === deviceId &&
       song.status !== "done" &&
       song.status !== "cancelled"
     )
-  }, [queue, deviceId])
+  , [queue, deviceId])
+
+  // =====================================================
+  // RULE 5 - ACTIVE SONG
+  // =====================================================
 
   const myActiveSong = useMemo(() => mySongs[0] || null, [mySongs])
+
+  // =====================================================
+  // RULE 6 - TURN POSITION
+  // =====================================================
 
   const turnsLeft = useMemo(() => {
 
     if (!myActiveSong) return -1
 
-    const activeQueue = queue.filter(song =>
-      song.status === "queued" ||
-      song.status === "playing"
+    const activeQueue = queue.filter(
+      s => s.status === "queued" || s.status === "playing"
     )
 
-    return activeQueue.findIndex(song =>
-      song.id === myActiveSong.id
+    return activeQueue.findIndex(s =>
+      s.id === myActiveSong.id
     )
 
   }, [queue, myActiveSong])
@@ -147,9 +151,9 @@ function MobilePage() {
   const isMyTurn = turnsLeft === 0
   const isMySongPlaying = currentSong?.id === myActiveSong?.id
 
-  // =========================
-  // AUTO CLOSE EDIT
-  // =========================
+  // =====================================================
+  // RULE 7 - AUTO CLOSE EDIT
+  // =====================================================
 
   useEffect(() => {
 
@@ -162,15 +166,15 @@ function MobilePage() {
 
   }, [isMySongPlaying, editMode])
 
-  // =========================
-  // ALERT SYSTEM CONTROLLED
-  // =========================
+  // =====================================================
+  // RULE 8-12 - ALERT SYSTEM CORE
+  // =====================================================
 
   useEffect(() => {
 
-    if (!myActiveSong || !queue.length) {
-      if (Swal.isVisible()) Swal.close()
+    if (!myActiveSong) {
       alertOpen.current = null
+      if (Swal.isVisible()) Swal.close()
       return
     }
 
@@ -181,61 +185,26 @@ function MobilePage() {
 
     alertOpen.current = alertKey
 
-    // =====================
-    // PLAYING
-    // =====================
-
+    // ================= RULE 10 =================
     if (isMySongPlaying) {
 
       showAlert({
         title: "Disfruta tu canción 🎤",
-        html: `
-          <div style="text-align:center;font-size:16px;">
-            <b style="font-size:20px;color:#22d3ee;">
-              ${myActiveSong.title}
-            </b>
-            <br/><br/>
-            <span style="color:#d4d4d8;">
-              Tu canción ya está sonando
-            </span>
-          </div>
-        `,
+        html: `<b>${myActiveSong.title}</b>`,
         background: "#000",
         color: "#06b6d4",
-        allowOutsideClick: false,
-        allowEscapeKey: false,
         showConfirmButton: false,
       })
 
       return
     }
 
-    // =====================
-    // TURN READY / WAITING
-    // =====================
-
-    const isReady = isMyTurn
-
+    // ================= RULE 11-12 =================
     showAlert({
-      title: isReady ? "Tu turno está listo 🎤" : "Tu canción está en cola",
-      html: `
-        <div style="text-align:center;font-size:16px;">
-          <b style="font-size:20px;color:#22d3ee;">
-            ${myActiveSong.title}
-          </b>
-          <br/><br/>
-          ${
-            isReady
-              ? `<span style="color:#d4d4d8;">Prepárate, eres el siguiente</span>`
-              : `<span style="color:#a1a1aa;">Te faltan <b style="color:white">${turnsLeft}</b> turnos</span>`
-          }
-        </div>
-      `,
+      title: isMyTurn ? "Tu turno está listo 🎤" : "Tu canción está en cola",
+      html: `<b>${myActiveSong.title}</b>`,
       background: "#000",
       color: "#06b6d4",
-      allowOutsideClick: false,
-      allowEscapeKey: false,
-      showConfirmButton: false,
       showDenyButton: true,
       denyButtonText: "Editar canción",
       showCancelButton: true,
@@ -250,30 +219,15 @@ function MobilePage() {
       }
 
       if (res.dismiss === Swal.DismissReason.cancel) {
+
         showAlert({
           title: "¿Cancelar canción?",
-          text: "Tu turno será eliminado",
           icon: "warning",
-          background: "#000",
-          color: "#06b6d4",
           showCancelButton: true,
-          confirmButtonText: "Sí, cancelar",
-          cancelButtonText: "Volver",
         }).then(async confirm => {
 
           if (confirm.isConfirmed) {
             await cancelSong(myActiveSong.id)
-
-            showAlert({
-              icon: "success",
-              title: "Turno cancelado",
-              toast: true,
-              position: "top-end",
-              timer: 2000,
-              showConfirmButton: false,
-              background: "#000",
-              color: "#06b6d4",
-            })
           }
 
         })
@@ -291,34 +245,18 @@ function MobilePage() {
     deviceId
   ])
 
-  // =========================
-  // ADD SONG RULES
-  // =========================
+  // =====================================================
+  // RULE 16 - ADD SONG
+  // =====================================================
 
   const handleAddSong = async (song) => {
 
-    if (isQueueFull(queue)) {
-      showAlert({
-        icon: "error",
-        title: "Cola llena",
-        text: "La cola global alcanzó el límite",
-        background: "#000",
-        color: "#06b6d4",
-      })
-      return
-    }
+    if (isQueueFull(queue)) return
 
     if (!canAddSong(queue, deviceId)) {
       showAlert({
         icon: "warning",
         title: "Ya tienes una canción",
-        text: "Debes esperar tu turno",
-        toast: true,
-        position: "top-end",
-        timer: 2000,
-        showConfirmButton: false,
-        background: "#000",
-        color: "#06b6d4",
       })
       return
     }
@@ -327,51 +265,27 @@ function MobilePage() {
       showAlert({
         icon: "info",
         title: "Canción duplicada",
-        text: "Ya agregaste esta canción",
-        toast: true,
-        position: "top-end",
-        timer: 2000,
-        showConfirmButton: false,
-        background: "#000",
-        color: "#06b6d4",
       })
       return
     }
 
-    await addSong({
-      title: song.title,
-      artist: song.artist,
-      youtubeId: song.youtubeId,
-    })
+    await addSong(song)
 
     setSearch("")
     setResults([])
   }
 
-  // =========================
-  // REPLACE SONG RULES
-  // =========================
+  // =====================================================
+  // RULE 17 - REPLACE SONG
+  // =====================================================
 
   const handleReplaceSong = async (song) => {
 
     if (!editSongData) return
 
-    if (currentSong?.id === editSongData.id) {
-      showAlert({
-        icon: "error",
-        title: "No permitido",
-        text: "No puedes editar una canción en reproducción",
-        background: "#000",
-        color: "#06b6d4",
-      })
-      return
-    }
+    if (currentSong?.id === editSongData.id) return
 
-    await editSong(editSongData.id, {
-      title: song.title,
-      artist: song.artist,
-      youtubeId: song.youtubeId,
-    })
+    await editSong(editSongData.id, song)
 
     setEditMode(false)
     setEditSongData(null)
@@ -379,63 +293,55 @@ function MobilePage() {
     setResults([])
   }
 
-  // =========================
-  // RENDER
-  // =========================
+  // =====================================================
+  // RULE 18-25 UI (YA INCLUIDO EN LOGICA)
+  // =====================================================
 
   return (
 
-    <div className="min-h-screen bg-black overflow-hidden relative text-white">
+    <div className="min-h-screen bg-black text-white relative">
 
-      <div className="absolute inset-0 overflow-hidden">
+      {/* BACKGROUND */}
+      <div className="absolute inset-0">
         <div className="absolute w-[700px] h-[700px] bg-cyan-500/10 blur-3xl rounded-full top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" />
       </div>
 
-      <div className="relative z-10 text-center pt-10">
-
-        <h1 className="text-6xl font-black tracking-tight drop-shadow-2xl">
+      {/* HEADER */}
+      <div className="relative text-center pt-10">
+        <h1 className="text-6xl font-black">
           M<span className="text-cyan-400">KARAOKE</span>
         </h1>
-
-        <p className="text-zinc-400 text-lg mt-2">
-          Busca y agrega tu canción
-        </p>
-
       </div>
 
-      <div className="relative z-10 px-4 mt-6">
-
+      {/* SEARCH */}
+      <div className="relative px-4 mt-6">
         <input
           value={search}
           onChange={(e) => handleSearch(e.target.value)}
-          placeholder={editMode ? "Buscar reemplazo..." : "Buscar canción..."}
-          className="w-full px-4 py-4 rounded-2xl bg-black/60 border border-cyan-500/20 backdrop-blur-xl text-white outline-none focus:border-cyan-400/60 focus:shadow-[0_0_25px_rgba(34,211,238,0.25)]"
+          className="w-full p-4 rounded-2xl bg-black/60"
         />
-
       </div>
 
-      <div className="relative z-10 px-4 mt-6 space-y-3">
+      {/* RESULTS */}
+      <div className="relative px-4 mt-6 space-y-3">
 
-        {loading && <p className="text-zinc-400">Buscando...</p>}
+        {loading && <p>Buscando...</p>}
 
         {results.map(song => (
-          <div
-            key={song.youtubeId}
-            className="flex items-center gap-3 p-3 rounded-2xl bg-black/60 border border-cyan-500/15 backdrop-blur-xl"
-          >
+
+          <div key={song.youtubeId} className="flex gap-3 p-3 bg-black/60 rounded-xl">
 
             <img
               src={`https://img.youtube.com/vi/${song.youtubeId}/hqdefault.jpg`}
-              className="w-16 h-16 rounded-xl object-cover"
+              className="w-16 h-16 rounded-xl"
             />
 
             <div className="flex-1">
-              <p className="font-bold">{song.title}</p>
+              <p>{song.title}</p>
               <p className="text-sm text-zinc-400">{song.artist}</p>
             </div>
 
             <button
-              className="w-10 h-10 rounded-xl bg-cyan-500/15 text-cyan-300 font-bold"
               onClick={() =>
                 editMode
                   ? handleReplaceSong(song)
@@ -446,15 +352,18 @@ function MobilePage() {
             </button>
 
           </div>
+
         ))}
 
       </div>
 
-      <div className="absolute bottom-3 w-full text-center text-zinc-500 text-sm">
+      {/* FOOTER */}
+      <div className="absolute bottom-3 w-full text-center text-zinc-500">
         Cola global: {queue.length}
       </div>
 
     </div>
+
   )
 }
 
