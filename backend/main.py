@@ -6,7 +6,7 @@ import models
 from schemas import SongCreate, SongUpdate
 from ws_manager import manager
 import os
-import requests
+import httpx  # 👈 CAMBIO (antes requests)
 
 # =========================
 # INIT DB
@@ -40,7 +40,7 @@ def get_db():
         db.close()
 
 # =========================
-# YOUTUBE SEARCH
+# YOUTUBE SEARCH (FIX async)
 # =========================
 
 @app.get("/search")
@@ -57,8 +57,9 @@ async def search(q: str = Query(...)):
     )
 
     try:
-        res = requests.get(url)
-        data = res.json()
+        async with httpx.AsyncClient() as client:  # 👈 FIX
+            res = await client.get(url)
+            data = res.json()
 
         results = []
 
@@ -76,14 +77,15 @@ async def search(q: str = Query(...)):
         return []
 
 # =========================
-# QUEUE BUILDER
+# QUEUE BUILDER (FIX ORDER)
 # =========================
 
 def build_queue(db: Session):
 
-    songs = db.query(models.Song)\
-        .order_by(models.Song.createdAt.asc())\
-        .all()
+    songs = db.query(models.Song).order_by(
+        models.Song.status.desc(),        # 👈 FIX: playing/queued primero
+        models.Song.createdAt.asc()
+    ).all()
 
     return [
         {
@@ -99,14 +101,17 @@ def build_queue(db: Session):
     ]
 
 # =========================
-# BROADCAST
+# BROADCAST (SAFE)
 # =========================
 
 async def broadcast_queue(db: Session):
-    await manager.broadcast({
-        "type": "queue_update",
-        "queue": build_queue(db)
-    })
+    try:
+        await manager.broadcast({
+            "type": "queue_update",
+            "queue": build_queue(db)
+        })
+    except Exception as e:
+        print("BROADCAST ERROR:", e)
 
 # =========================
 # ADD SONG
@@ -279,6 +284,18 @@ async def play_now(song_id: str, db: Session = Depends(get_db)):
     return {"ok": True}
 
 # =========================
+# STATE (NUEVO - IMPORTANTE)
+# =========================
+
+@app.get("/state")
+async def get_state(db: Session = Depends(get_db)):
+
+    return {
+        "queue": build_queue(db),
+        "current": current_song
+    }
+
+# =========================
 # WEBSOCKET
 # =========================
 
@@ -290,6 +307,7 @@ async def ws(websocket: WebSocket):
 
     try:
 
+        # estado inicial seguro
         await websocket.send_json({
             "type": "queue_update",
             "queue": build_queue(db)

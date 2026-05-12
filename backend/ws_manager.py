@@ -8,25 +8,35 @@ class ConnectionManager:
 
     async def connect(self, websocket: WebSocket):
         await websocket.accept()
-        self.active_connections.append(websocket)
+
+        # evitar duplicados
+        if websocket not in self.active_connections:
+            self.active_connections.append(websocket)
 
     def disconnect(self, websocket: WebSocket):
-        self.active_connections.remove(websocket)
+
+        # safe remove
+        if websocket in self.active_connections:
+            self.active_connections.remove(websocket)
 
     async def broadcast(self, message: dict):
 
-        dead = []
+        dead_connections = []
 
         for conn in self.active_connections:
 
             try:
                 await conn.send_json(message)
 
-            except:
-                dead.append(conn)
+            except Exception as e:
+                # solo marcamos muertos, no rompemos el loop
+                dead_connections.append(conn)
+                print("WS SEND ERROR:", e)
 
-        for d in dead:
-            self.active_connections.remove(d)
+        # cleanup seguro
+        for conn in dead_connections:
+            if conn in self.active_connections:
+                self.active_connections.remove(conn)
 
 
 manager = ConnectionManager()
