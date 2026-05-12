@@ -414,3 +414,133 @@ async def state():
         "queue": get_queue(),
         "history": get_history()
     }
+
+# =====================================================
+# DELETE - REMOVE SONG
+# =====================================================
+
+@app.delete("/queue/remove/{song_id}")
+async def remove_song(song_id: str):
+
+    song = fetch_one("""
+        SELECT status FROM songs
+        WHERE id=:i
+    """, {"i": song_id})
+
+    if not song:
+        raise HTTPException(404, "SONG_NOT_FOUND")
+
+    was_playing = song[0] == "playing"
+
+    execute("""
+        DELETE FROM songs
+        WHERE id=:i
+    """, {"i": song_id})
+
+    if was_playing:
+        await next_song()
+    else:
+        await broadcast_queue()
+
+    return {"ok": True}
+
+
+# =====================================================
+# POST - REPEAT SONG
+# =====================================================
+
+@app.post("/queue/repeat")
+async def repeat_song(song: SongCreate):
+
+    song_id = str(uuid4())
+    now = int(time.time() * 1000)
+
+    execute("""
+        INSERT INTO songs
+        VALUES (:id,:o,:t,:a,:y,'queued',:c,:u)
+    """, {
+        "id": song_id,
+        "o": song.ownerId,
+        "t": song.title,
+        "a": song.artist,
+        "y": song.youtubeId,
+        "c": now,
+        "u": now
+    })
+
+    await broadcast_queue()
+
+    return {
+        "ok": True,
+        "id": song_id
+    }
+
+
+# =====================================================
+# POST - RESTART SONG
+# =====================================================
+
+@app.post("/queue/restart/{song_id}")
+async def restart_song(song_id: str):
+
+    current = fetch_one("""
+        SELECT * FROM songs
+        WHERE id=:i
+    """, {"i": song_id})
+
+    if not current:
+        raise HTTPException(404, "SONG_NOT_FOUND")
+
+    execute("""
+        UPDATE songs
+        SET status='queued'
+        WHERE status='playing'
+    """)
+
+    execute("""
+        UPDATE songs
+        SET status='playing',
+            updated_at=:n
+        WHERE id=:i
+    """, {
+        "n": int(time.time() * 1000),
+        "i": song_id
+    })
+
+    await broadcast_queue()
+    await broadcast_player()
+
+    return {"ok": True}
+
+
+# =====================================================
+# PUT - REORDER QUEUE
+# =====================================================
+
+@app.put("/queue/reorder")
+async def reorder_queue(data: dict):
+
+    queue = data.get("queue")
+
+    if not isinstance(queue, list):
+        raise HTTPException(400, "INVALID_QUEUE")
+
+    now = int(time.time() * 1000)
+
+    for index, song_id in enumerate(queue):
+
+        execute("""
+            UPDATE songs
+            SET created_at=:c,
+                updated_at=:u
+            WHERE id=:i
+            AND status='queued'
+        """, {
+            "c": now + index,
+            "u": now,
+            "i": song_id
+        })
+
+    await broadcast_queue()
+
+    return {"ok": True}
