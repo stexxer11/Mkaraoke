@@ -18,6 +18,7 @@ from sqlalchemy import create_engine, text
 load_dotenv()
 
 API_KEY = os.getenv("YOUTUBE_API_KEY")
+print("YOUTUBE_API_KEY:", API_KEY)
 DATABASE_URL = os.getenv("DATABASE_URL")
 
 http_client = httpx.AsyncClient(timeout=10)
