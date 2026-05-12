@@ -9,7 +9,7 @@ import debounce from "lodash.debounce"
 import Swal from "sweetalert2"
 
 import { useKaraoke } from "../context/KaraokeContext"
-import { searchYouTube } from "../services/youtubeApi"
+import { useYouTube } from "../context/YouTubeContext"
 
 function MobilePage() {
 
@@ -23,44 +23,41 @@ function MobilePage() {
   } = useKaraoke()
 
   // =========================
+  // YOUTUBE CONTEXT (FIX PRINCIPAL)
+  // =========================
+
+  const {
+    results,
+    loading,
+    searchSongs,
+  } = useYouTube()
+
+  // =========================
   // STATES
   // =========================
 
   const [search, setSearch] = useState("")
-  const [results, setResults] = useState([])
-  const [loading, setLoading] = useState(false)
-
   const [editMode, setEditMode] = useState(false)
   const [editSongData, setEditSongData] = useState(null)
 
   const alertOpen = useRef(null)
 
   // =========================
-  // SEARCH
+  // SEARCH (USANDO CONTEXT)
   // =========================
 
   const debouncedSearch = useMemo(() =>
-    debounce(async (value) => {
+    debounce((value) => {
 
       if (!value || value.trim().length < 3) {
-        setResults([])
+        searchSongs("")
         return
       }
 
-      setLoading(true)
-
-      try {
-        const data = await searchYouTube(value)
-        setResults(data || [])
-      } catch (err) {
-        console.log(err)
-        setResults([])
-      }
-
-      setLoading(false)
+      searchSongs(value)
 
     }, 700)
-  , [])
+  , [searchSongs])
 
   const handleSearch = (value) => {
     setSearch(value)
@@ -113,13 +110,13 @@ function MobilePage() {
       setEditMode(false)
       setEditSongData(null)
       setSearch("")
-      setResults([])
+      searchSongs("")
     }
 
   }, [isMySongPlaying, editMode])
 
   // =========================
-  // ALERT SYSTEM
+  // ALERT SYSTEM (ESTABILIZADO)
   // =========================
 
   useEffect(() => {
@@ -130,11 +127,9 @@ function MobilePage() {
       return
     }
 
-    const alertKey =
-      `${myActiveSong.id}-${turnsLeft}-${currentSong?.id}`
+    const alertKey = myActiveSong.id
 
     if (alertOpen.current === alertKey) return
-
     alertOpen.current = alertKey
 
     // =====================
@@ -159,7 +154,6 @@ function MobilePage() {
         background: "#000",
         color: "#06b6d4",
         allowOutsideClick: false,
-        allowEscapeKey: false,
         showConfirmButton: false,
       })
 
@@ -187,8 +181,6 @@ function MobilePage() {
         `,
         background: "#000",
         color: "#06b6d4",
-        allowOutsideClick: false,
-        allowEscapeKey: false,
         showConfirmButton: false,
         showDenyButton: true,
         denyButtonText: "Editar canción",
@@ -200,34 +192,21 @@ function MobilePage() {
           setEditMode(true)
           setEditSongData(myActiveSong)
           setSearch("")
-          setResults([])
+          searchSongs("")
         }
 
         if (res.dismiss === Swal.DismissReason.cancel) {
+
           Swal.fire({
             title: "¿Cancelar canción?",
-            text: "Tu turno será eliminado",
             icon: "warning",
             background: "#000",
             color: "#06b6d4",
             showCancelButton: true,
-            confirmButtonText: "Sí, cancelar",
-            cancelButtonText: "Volver",
           }).then(async confirm => {
 
             if (confirm.isConfirmed) {
               await cancelSong(myActiveSong.id)
-
-              Swal.fire({
-                icon: "success",
-                title: "Turno cancelado",
-                toast: true,
-                position: "top-end",
-                timer: 2000,
-                showConfirmButton: false,
-                background: "#000",
-                color: "#06b6d4",
-              })
             }
 
           })
@@ -257,52 +236,7 @@ function MobilePage() {
       `,
       background: "#000",
       color: "#06b6d4",
-      allowOutsideClick: false,
-      allowEscapeKey: false,
       showConfirmButton: false,
-      showDenyButton: true,
-      denyButtonText: "Editar canción",
-      showCancelButton: true,
-      cancelButtonText: "Cancelar turno",
-    }).then(res => {
-
-      if (res.isDenied && !isMySongPlaying) {
-        setEditMode(true)
-        setEditSongData(myActiveSong)
-        setSearch("")
-        setResults([])
-      }
-
-      if (res.dismiss === Swal.DismissReason.cancel) {
-        Swal.fire({
-          title: "¿Cancelar canción?",
-          text: "Tu turno será eliminado",
-          icon: "warning",
-          background: "#000",
-          color: "#06b6d4",
-          showCancelButton: true,
-          confirmButtonText: "Sí, cancelar",
-          cancelButtonText: "Volver",
-        }).then(async confirm => {
-
-          if (confirm.isConfirmed) {
-            await cancelSong(myActiveSong.id)
-
-            Swal.fire({
-              icon: "success",
-              title: "Turno cancelado",
-              toast: true,
-              position: "top-end",
-              timer: 2000,
-              showConfirmButton: false,
-              background: "#000",
-              color: "#06b6d4",
-            })
-          }
-
-        })
-      }
-
     })
 
   }, [
@@ -321,22 +255,7 @@ function MobilePage() {
 
   const handleAddSong = async (song) => {
 
-    if (mySongs.length > 0) {
-
-      Swal.fire({
-        icon: "warning",
-        title: "Ya tienes una canción",
-        text: "Debes esperar tu turno",
-        toast: true,
-        position: "top-end",
-        timer: 2000,
-        showConfirmButton: false,
-        background: "#000",
-        color: "#06b6d4",
-      })
-
-      return
-    }
+    if (mySongs.length > 0) return
 
     await addSong({
       title: song.title,
@@ -345,8 +264,7 @@ function MobilePage() {
     })
 
     setSearch("")
-    setResults([])
-
+    searchSongs("")
   }
 
   // =========================
@@ -366,8 +284,7 @@ function MobilePage() {
     setEditMode(false)
     setEditSongData(null)
     setSearch("")
-    setResults([])
-
+    searchSongs("")
   }
 
   // =========================
@@ -378,7 +295,6 @@ function MobilePage() {
 
     <div className="mobile">
 
-      {/* HEADER */}
       <div className="mobile-header">
         <h1 className="mobile-title">MKaraoke</h1>
         <p className="mobile-subtitle">
@@ -386,7 +302,6 @@ function MobilePage() {
         </p>
       </div>
 
-      {/* SEARCH */}
       <div className="mobile-search">
         <input
           value={search}
@@ -396,7 +311,6 @@ function MobilePage() {
         />
       </div>
 
-      {/* RESULTS */}
       <div className="mobile-results">
 
         {loading && (
@@ -433,15 +347,12 @@ function MobilePage() {
 
       </div>
 
-      {/* FOOTER */}
       <div className="mobile-footer">
         Cola global: {queue.length}
       </div>
 
     </div>
-
   )
-
 }
 
 export default MobilePage
