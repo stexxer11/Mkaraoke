@@ -6,679 +6,330 @@ import { useKaraoke } from "../context/KaraokeContext"
 
 function TvPage() {
 
-  const {
-    playNextSong,
-  } = useKaraoke()
+  const { playNextSong } = useKaraoke()
 
-  // =====================================================
+  // =========================
   // STATES
-  // ===================================================
+  // =========================
 
-  const [currentSong, setCurrentSong] =
-    useState(null)
+  const [currentSong, setCurrentSong] = useState(null)
+  const [videoReady, setVideoReady] = useState(false)
+  const [showInfo, setShowInfo] = useState(false)
+  const [qrUrl, setQrUrl] = useState("")
+  const [playerKey, setPlayerKey] = useState(0)
 
-  const [videoReady, setVideoReady] =
-    useState(false)
-
-  const [showInfo, setShowInfo] =
-    useState(false)
-
-  const [qrUrl, setQrUrl] =
-    useState("")
-
-  // =====================================================
-  // FORCE PLAYER REMOUNT
-  // =====================================================
-
-  const [playerKey, setPlayerKey] =
-    useState(0)
-
-  // =====================================================
+  // =========================
   // REFS
-  // =====================================================
+  // =========================
 
-  const playerRef =
-    useRef(null)
+  const playerRef = useRef(null)
+  const socketRef = useRef(null)
+  const infoTimeoutRef = useRef(null)
+  const mountedRef = useRef(true)
 
-  const socketRef =
-    useRef(null)
-
-  const infoTimeoutRef =
-    useRef(null)
-
-  // =====================================================
-  // QR URL
-  // =====================================================
+  // =========================
+  // QR URL (SAFE)
+  // =========================
 
   useEffect(() => {
-
-    if (typeof window !== "undefined") {
-
-      setQrUrl(
-        window.location.origin
-      )
-
+    try {
+      if (typeof window !== "undefined") {
+        setQrUrl(window.location.origin || "")
+      }
+    } catch {
+      setQrUrl("")
     }
-
   }, [])
 
-  // =====================================================
-  // WEBSOCKET
-  // =====================================================
+  // =========================
+  // WEBSOCKET (SAFE + CLEAN)
+  // =========================
 
   useEffect(() => {
 
-    const socket = new WebSocket(
-      `${import.meta.env.VITE_WS_URL.replace(
-        "https",
-        "wss"
-      )}/ws`
-    )
+    mountedRef.current = true
 
+    const wsUrl =
+      import.meta.env.VITE_WS_URL?.replace("https", "wss")
+
+    if (!wsUrl) return
+
+    const socket = new WebSocket(`${wsUrl}/ws`)
     socketRef.current = socket
 
-    // =========================================
-    // CONNECT
-    // =========================================
-
     socket.onopen = () => {
-
-      console.log(
-        "TV SOCKET CONNECTED"
-      )
-
+      console.log("TV SOCKET CONNECTED")
     }
 
-    // =========================================
-    // MESSAGE
-    // =========================================
-
-    socket.onmessage = async (
-      event
-    ) => {
+    socket.onmessage = async (event) => {
+      if (!mountedRef.current) return
 
       try {
+        if (!event?.data) return
 
-        const data =
-          JSON.parse(
-            event.data
-          )
+        const data = JSON.parse(event.data)
 
-        // =====================================
-        // LOAD VIDEO
-        // =====================================
+        if (data.type === "LOAD_VIDEO") {
 
-        if (
-          data.type ===
-          "LOAD_VIDEO"
-        ) {
-
-          console.log(
-            "LOAD VIDEO",
-            data.song
-          )
-
-          // ===============================
-          // RESET PLAYER UI
-          // ===============================
+          const song = data?.song
+          if (!song?.youtubeId) return
 
           setVideoReady(false)
 
-          // ===============================
-          // FORCE FULL REMOUNT
-          // IMPORTANT FOR:
-          // - restart
-          // - repeat
-          // - playNow
-          // - same video replay
-          // ===============================
+          setPlayerKey(prev => prev + 1)
 
-          setPlayerKey(
-            prev => prev + 1
-          )
-
-          // ===============================
-          // UPDATE SONG
-          // ===============================
-
-          setCurrentSong(
-            data.song
-          )
-
+          setCurrentSong(song)
         }
 
-        // =====================================
-        // STOP VIDEO
-        // =====================================
-
-        if (
-          data.type ===
-          "STOP_VIDEO"
-        ) {
-
-          console.log(
-            "STOP VIDEO"
-          )
+        if (data.type === "STOP_VIDEO") {
 
           setCurrentSong(null)
-
           setVideoReady(false)
-
-          setPlayerKey(
-            prev => prev + 1
-          )
-
+          setPlayerKey(prev => prev + 1)
         }
 
       } catch (err) {
-
-        console.log(
-          "WS PARSE ERROR",
-          err
-        )
-
+        console.log("WS PARSE ERROR", err)
       }
-
     }
-
-    // =========================================
-    // ERROR
-    // =========================================
 
     socket.onerror = (err) => {
-
-      console.log(
-        "TV SOCKET ERROR",
-        err
-      )
-
+      console.log("TV SOCKET ERROR", err)
     }
-
-    // =========================================
-    // CLOSE
-    // =========================================
 
     socket.onclose = () => {
-
-      console.log(
-        "TV SOCKET CLOSED"
-      )
-
+      console.log("TV SOCKET CLOSED")
     }
 
-    // =========================================
-    // CLEANUP
-    // =========================================
-
     return () => {
-
+      mountedRef.current = false
       socket.close()
-
+      socketRef.current = null
     }
 
   }, [])
 
-  // =====================================================
+  // =========================
   // PLAYER READY
-  // =====================================================
+  // =========================
 
-  const handleReady = (
-    event
-  ) => {
-
-    playerRef.current =
-      event.target
-
-    console.log(
-      "PLAYER READY"
-    )
-
+  const handleReady = (event) => {
+    playerRef.current = event.target
   }
 
-  // =====================================================
-  // PLAYER STATE
-  // =====================================================
+  // =========================
+  // STATE CHANGE
+  // =========================
 
-  const handleStateChange =
-    async (event) => {
+  const handleStateChange = async (event) => {
 
-      // =========================================
-      // PLAYING
-      // =========================================
+    if (!mountedRef.current) return
 
-      if (event.data === 1) {
+    // PLAYING
+    if (event.data === 1) {
 
-        console.log(
-          "VIDEO PLAYING"
-        )
+      setVideoReady(true)
+      setShowInfo(true)
 
-        setVideoReady(true)
+      clearTimeout(infoTimeoutRef.current)
 
-        setShowInfo(true)
-
-        clearTimeout(
-          infoTimeoutRef.current
-        )
-
-        infoTimeoutRef.current =
-          setTimeout(() => {
-
-            setShowInfo(false)
-
-          }, 3500)
-
-      }
-
-      // =========================================
-      // ENDED
-      // =========================================
-
-      if (event.data === 0) {
-
-        console.log(
-          "VIDEO ENDED"
-        )
-
-        try {
-
-          await playNextSong()
-
-        } catch (err) {
-
-          console.log(err)
-
-        }
-
-      }
-
+      infoTimeoutRef.current = setTimeout(() => {
+        if (mountedRef.current) setShowInfo(false)
+      }, 3500)
     }
 
-  // =====================================================
-  // PLAYER ERROR
-  // =====================================================
-
-  const handleError =
-    async (err) => {
-
-      console.log(
-        "PLAYER ERROR",
-        err
-      )
-
+    // ENDED
+    if (event.data === 0) {
       try {
-
         await playNextSong()
-
-      } catch (e) {
-
-        console.log(e)
-
+      } catch (err) {
+        console.log(err)
       }
-
     }
+  }
 
-  // =====================================================
-  // CLEANUP
-  // =====================================================
+  // =========================
+  // ERROR HANDLER SAFE
+  // =========================
+
+  const handleError = async (err) => {
+    console.log("PLAYER ERROR", err)
+
+    try {
+      await playNextSong()
+    } catch (e) {
+      console.log(e)
+    }
+  }
+
+  // =========================
+  // CLEANUP TIMEOUT
+  // =========================
 
   useEffect(() => {
-
     return () => {
-
-      clearTimeout(
-        infoTimeoutRef.current
-      )
-
+      clearTimeout(infoTimeoutRef.current)
     }
-
   }, [])
 
-  // =====================================================
-  // YOUTUBE OPTIONS
-  // =====================================================
+  // =========================
+  // YOUTUBE OPTIONS (SAFE ORIGIN)
+  // =========================
 
   const opts = {
-
     width: "100%",
-
     height: "100%",
-
     playerVars: {
-
       autoplay: 1,
-
       controls: 0,
-
       modestbranding: 1,
-
       rel: 0,
-
       fs: 0,
-
       disablekb: 1,
-
       playsinline: 1,
-
       iv_load_policy: 3,
-
       cc_load_policy: 0,
-
       origin:
-        window.location.origin,
-
+        typeof window !== "undefined"
+          ? window.location.origin
+          : ""
     },
-
   }
 
-  // =====================================================
-  // RENDER
-  // =====================================================
+  // =========================
+  // RENDER (NO CSS CHANGES)
+  // =========================
 
   return (
-
     <div className="min-h-screen bg-black overflow-hidden relative text-white">
 
-      {/* ==========================================
-          PLAYER
-      ========================================== */}
-
-      {currentSong && (
+      {/* PLAYER */}
+      {currentSong?.youtubeId && (
 
         <div
           className={`
             absolute inset-0
             transition-opacity duration-300
-
-            ${videoReady
-              ? "opacity-100"
-              : "opacity-0"}
+            ${videoReady ? "opacity-100" : "opacity-0"}
           `}
         >
 
           <YouTube
-
-            // ===================================
-            // FORCE REMOUNT
-            // ===================================
-
             key={playerKey}
-
-            videoId={
-              currentSong.youtubeId
-            }
-
+            videoId={currentSong.youtubeId}
             opts={opts}
-
-            onReady={
-              handleReady
-            }
-
-            onStateChange={
-              handleStateChange
-            }
-
-            onError={
-              handleError
-            }
-
-            className="
-              w-full
-              h-full
-            "
-
-            iframeClassName="
-              w-full
-              h-full
-              pointer-events-none
-            "
+            onReady={handleReady}
+            onStateChange={handleStateChange}
+            onError={handleError}
+            className="w-full h-full"
+            iframeClassName="w-full h-full pointer-events-none"
           />
 
         </div>
 
       )}
 
-      {/* ==========================================
-          IDLE SCREEN
-      ========================================== */}
-
+      {/* IDLE SCREEN */}
       {!currentSong && (
 
-        <div
-          className="
-            absolute
-            inset-0
-            flex
-            flex-col
-            items-center
-            justify-center
-            bg-gradient-to-br
-            from-black
-            via-zinc-950
-            to-cyan-950
-            overflow-hidden
-          "
-        >
+        <div className="
+          absolute inset-0
+          flex flex-col items-center justify-center
+          bg-gradient-to-br from-black via-zinc-950 to-cyan-950
+          overflow-hidden
+        ">
 
-          {/* GLOW */}
-          <div
-            className="
-              absolute
-              w-[700px]
-              h-[700px]
-              bg-cyan-500/10
-              blur-3xl
-              rounded-full
-            "
-          />
+          <div className="
+            absolute w-[700px] h-[700px]
+            bg-cyan-500/10 blur-3xl rounded-full
+          " />
 
-          {/* CONTENT */}
-          <div
-            className="
-              relative
-              z-10
-              flex
-              flex-col
-              items-center
-            "
-          >
+          <div className="relative z-10 flex flex-col items-center">
 
-            {/* LOGO */}
-            <h1
-              className="
-                text-7xl
-                font-black
-                tracking-tight
-                text-white
-                drop-shadow-2xl
-              "
-            >
-              M
-              <span
-                className="
-                  text-cyan-400
-                "
-              >
-                KARAOKE
-              </span>
+            <h1 className="
+              text-7xl font-black tracking-tight text-white drop-shadow-2xl
+            ">
+              M<span className="text-cyan-400">KARAOKE</span>
             </h1>
 
-            <p
-              className="
-                text-zinc-400
-                text-xl
-                mt-3
-                mb-10
-                font-medium
-              "
-            >
+            <p className="text-zinc-400 text-xl mt-3 mb-10 font-medium">
               Escanea y agrega tu canción
             </p>
 
-            {/* QR */}
-            <div
-              className="
-                relative
-                bg-white
-                rounded-[2.5rem]
-                p-7
-                shadow-[0_0_80px_rgba(34,211,238,0.25)]
-                border
-                border-white/40
-              "
-            >
-
+            <div className="
+              relative bg-white rounded-[2.5rem] p-7
+              shadow-[0_0_80px_rgba(34,211,238,0.25)]
+              border border-white/40
+            ">
               {qrUrl && (
-
                 <QRCodeCanvas
-                  key={qrUrl}
                   value={qrUrl}
                   size={320}
                 />
-
               )}
-
             </div>
 
-            {/* CTA */}
-            <div
-              className="
-                mt-8
-                px-6
-                py-3
-                rounded-2xl
-                bg-cyan-500/10
-                border
-                border-cyan-400/20
-                backdrop-blur-xl
-              "
-            >
-
-              <p
-                className="
-                  text-cyan-300
-                  text-lg
-                  font-semibold
-                  tracking-wide
-                "
-              >
+            <div className="
+              mt-8 px-6 py-3 rounded-2xl
+              bg-cyan-500/10 border border-cyan-400/20
+              backdrop-blur-xl
+            ">
+              <p className="text-cyan-300 text-lg font-semibold tracking-wide">
                 Escanea para cantar
               </p>
-
             </div>
 
           </div>
-
         </div>
-
       )}
 
-      {/* ==========================================
-          SONG INFO
-      ========================================== */}
-
+      {/* SONG INFO */}
       {currentSong && (
 
-        <div
-          className={`
-            absolute
-            top-5
-            left-5
-            bg-black/70
-            backdrop-blur-xl
-            border
-            border-cyan-500/20
-            rounded-2xl
-            px-5
-            py-3
-            shadow-2xl
-            transition-all
-            duration-300
+        <div className={`
+          absolute top-5 left-5
+          bg-black/70 backdrop-blur-xl
+          border border-cyan-500/20
+          rounded-2xl px-5 py-3
+          shadow-2xl transition-all duration-300
+          ${showInfo ? "opacity-100 translate-y-0" : "opacity-0 -translate-y-5"}
+        `}>
 
-            ${showInfo
-              ? "opacity-100 translate-y-0"
-              : "opacity-0 -translate-y-5"}
-          `}
-        >
-
-          <h2
-            className="
-              text-2xl
-              font-black
-            "
-          >
-
+          <h2 className="text-2xl font-black">
             {currentSong.title}
-
           </h2>
 
-          <p
-            className="
-              text-zinc-400
-              mt-1
-            "
-          >
-
+          <p className="text-zinc-400 mt-1">
             {currentSong.artist}
-
           </p>
 
         </div>
 
       )}
 
-      {/* ==========================================
-          FLOATING QR
-      ========================================== */}
-
+      {/* FLOATING QR */}
       {currentSong && (
 
-        <div
-          className="
-            absolute
-            bottom-5
-            right-5
-            bg-black/70
-            border
-            border-cyan-500/20
-            rounded-3xl
-            p-4
-            backdrop-blur-2xl
-            shadow-2xl
-          "
-        >
+        <div className="
+          absolute bottom-5 right-5
+          bg-black/70 border border-cyan-500/20
+          rounded-3xl p-4 backdrop-blur-2xl
+          shadow-2xl
+        ">
 
-          <div
-            className="
-              bg-white
-              rounded-2xl
-              p-2
-            "
-          >
+          <div className="bg-white rounded-2xl p-2">
 
             {qrUrl && (
-
               <QRCodeCanvas
-                key={`small-${qrUrl}`}
                 value={qrUrl}
                 size={120}
               />
-
             )}
 
           </div>
 
-          <p
-            className="
-              text-center
-              mt-3
-              text-cyan-300
-              text-sm
-              font-semibold
-            "
-          >
-
+          <p className="text-center mt-3 text-cyan-300 text-sm font-semibold">
             Escanea para cantar
-
           </p>
 
         </div>
@@ -686,9 +337,7 @@ function TvPage() {
       )}
 
     </div>
-
   )
-
 }
 
 export default TvPage

@@ -34,7 +34,7 @@ export function KaraokeProvider({ children }) {
   })
 
   // =====================================================
-  // STATE
+  // STATE (SOURCE OF TRUTH)
   // =====================================================
 
   const [queue, setQueue] = useState([])
@@ -44,7 +44,7 @@ export function KaraokeProvider({ children }) {
   const reconnectRef = useRef(0)
 
   // =====================================================
-  // DERIVED STATE (SINGLE SOURCE OF TRUTH)
+  // DERIVED STATE (GLOBAL FIX)
   // =====================================================
 
   const currentSong = useMemo(() => {
@@ -52,8 +52,8 @@ export function KaraokeProvider({ children }) {
   }, [queue])
 
   const activeQueue = useMemo(() => {
-    return queue.filter(s =>
-      s.status === "queued" || s.status === "playing"
+    return queue.filter(
+      s => s.status === "queued" || s.status === "playing"
     )
   }, [queue])
 
@@ -78,12 +78,11 @@ export function KaraokeProvider({ children }) {
   const safeSend = (data) => {
     const ws = socketRef.current
     if (!ws || ws.readyState !== 1) return
-
     ws.send(JSON.stringify(data))
   }
 
   // =====================================================
-  // CONNECT WEBSOCKET (WITH RECONNECT)
+  // WEBSOCKET CONNECTION (FIXED SYNC)
   // =====================================================
 
   useEffect(() => {
@@ -104,7 +103,7 @@ export function KaraokeProvider({ children }) {
 
         reconnectRef.current = 0
 
-        // sync inicial (clave)
+        // sync inicial
         safeSend({
           type: "GET_STATE",
           deviceId
@@ -113,11 +112,20 @@ export function KaraokeProvider({ children }) {
 
       ws.onmessage = (event) => {
         try {
+
           const data = JSON.parse(event.data)
+
+          // =================================================
+          // QUEUE UPDATE (MAIN SOURCE)
+          // =================================================
 
           if (data.type === "queue_update") {
             setQueue(data.queue || [])
           }
+
+          // =================================================
+          // VIDEO CONTROL (FORCE RELOAD TV)
+          // =================================================
 
           if (
             data.type === "LOAD_VIDEO" ||
@@ -247,11 +255,11 @@ export function KaraokeProvider({ children }) {
       // PLAYER ACTIONS
       playNextSong,
 
-      // ADMIN
+      // ADMIN ACTIONS
       playNow,
       removeSongById,
 
-      // INTERNAL (optional debug)
+      // INTERNAL
       safeSend
 
     }}>

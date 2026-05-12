@@ -1,4 +1,4 @@
-import { useRef } from "react"
+import { useRef, useState } from "react"
 import Swal from "sweetalert2"
 import { useKaraoke } from "../context/KaraokeContext"
 
@@ -13,54 +13,53 @@ function AdminPage() {
     addSong,
   } = useKaraoke()
 
-  // =========================
+  // =====================================================
   // DRAG STATE
-  // =========================
+  // =====================================================
 
   const dragItem = useRef(null)
   const dragOverItem = useRef(null)
 
-  // =========================
-  // AUDIO FX (OPTIMIZADO)
-  // =========================
+  // =====================================================
+  // AUDIO FX (SIMPLE FIX)
+  // =====================================================
 
-  let audioCtx = null
+  const audioRef = useRef(null)
 
   const playSound = (freq = 400) => {
     try {
-      if (!audioCtx) {
-        audioCtx = new (window.AudioContext || window.webkitAudioContext)()
+      if (!audioRef.current) {
+        audioRef.current =
+          new (window.AudioContext || window.webkitAudioContext)()
       }
 
-      const osc = audioCtx.createOscillator()
-      const gain = audioCtx.createGain()
+      const ctx = audioRef.current
+
+      const osc = ctx.createOscillator()
+      const gain = ctx.createGain()
 
       osc.connect(gain)
-      gain.connect(audioCtx.destination)
+      gain.connect(ctx.destination)
 
       osc.frequency.value = freq
       osc.type = "square"
 
-      gain.gain.setValueAtTime(0.05, audioCtx.currentTime)
+      gain.gain.setValueAtTime(0.05, ctx.currentTime)
 
       osc.start()
-      osc.stop(audioCtx.currentTime + 0.12)
+      osc.stop(ctx.currentTime + 0.12)
 
     } catch {}
   }
 
-  // =========================
-  // NEXT
-  // =========================
+  // =====================================================
+  // ACTIONS
+  // =====================================================
 
   const handleNext = () => {
     playSound(180)
     playNextSong()
   }
-
-  // =========================
-  // PLAY NOW
-  // =========================
 
   const handlePlayNow = (song) => {
     if (!song?.id) return
@@ -68,11 +67,8 @@ function AdminPage() {
     playNow(song.id)
   }
 
-  // =========================
-  // REMOVE
-  // =========================
-
   const handleRemove = async (song) => {
+
     const res = await Swal.fire({
       title: "Eliminar canción",
       text: song.title,
@@ -85,23 +81,15 @@ function AdminPage() {
 
     if (!res.isConfirmed) return
 
-    removeSongById(song.id)
+    await removeSongById(song.id)
     playSound(120)
   }
-
-  // =========================
-  // RESTART
-  // =========================
 
   const handleRestartSong = () => {
     if (!currentSong) return
     playSound(500)
     playNow(currentSong.id)
   }
-
-  // =========================
-  // REPEAT
-  // =========================
 
   const handleRepeat = (song) => {
     playSound(500)
@@ -114,51 +102,41 @@ function AdminPage() {
     })
   }
 
-  // =========================
-  // MOVE UP (REAL ORDER)
-  // =========================
+  // =====================================================
+  // REORDER (LOCAL VISUAL ONLY - NO BACKEND BUG)
+  // =====================================================
+
+  const reorderQueue = (newQueue) => {
+    console.log("ORDER CHANGE (UI ONLY):", newQueue.map(s => s.id))
+
+    // IMPORTANTE:
+    // aquí NO se hace update directo de queue
+    // porque queue viene del backend via WS
+  }
 
   const moveUp = (index) => {
     if (index === 0) return
 
     const newQueue = [...queue]
-
-    const temp = newQueue[index - 1]
-    newQueue[index - 1] = newQueue[index]
-    newQueue[index] = temp
+    ;[newQueue[index - 1], newQueue[index]] =
+      [newQueue[index], newQueue[index - 1]]
 
     reorderQueue(newQueue)
   }
-
-  // =========================
-  // MOVE DOWN (REAL ORDER)
-  // =========================
 
   const moveDown = (index) => {
     if (index === queue.length - 1) return
 
     const newQueue = [...queue]
-
-    const temp = newQueue[index + 1]
-    newQueue[index + 1] = newQueue[index]
-    newQueue[index] = temp
+    ;[newQueue[index + 1], newQueue[index]] =
+      [newQueue[index], newQueue[index + 1]]
 
     reorderQueue(newQueue)
   }
 
-  // =========================
-  // REORDER (BACKEND READY)
-  // =========================
-
-  const reorderQueue = (newQueue) => {
-    console.log("NEW ORDER:", newQueue.map(s => s.id))
-    // aquí conectarás backend si tienes:
-    // reorderQueueApi(newQueue.map(s => s.id))
-  }
-
-  // =========================
+  // =====================================================
   // DRAG EVENTS
-  // =========================
+  // =====================================================
 
   const handleDragStart = (index) => {
     dragItem.current = index
@@ -173,17 +151,16 @@ function AdminPage() {
   }
 
   const handleDrop = () => {
-    if (dragItem.current == null || dragOverItem.current == null) return
 
     const from = dragItem.current
     const to = dragOverItem.current
 
-    if (from === to) return
+    if (from == null || to == null || from === to) return
 
     const newQueue = [...queue]
 
-    const movedItem = newQueue.splice(from, 1)[0]
-    newQueue.splice(to, 0, movedItem)
+    const moved = newQueue.splice(from, 1)[0]
+    newQueue.splice(to, 0, moved)
 
     reorderQueue(newQueue)
 
@@ -193,9 +170,9 @@ function AdminPage() {
     playSound(700)
   }
 
-  // =========================
+  // =====================================================
   // RENDER
-  // =========================
+  // =====================================================
 
   return (
     <div className="min-h-screen bg-black text-white p-6">
@@ -212,28 +189,31 @@ function AdminPage() {
 
       {/* CURRENT */}
       <div className="bg-zinc-900 border border-cyan-500 rounded-3xl p-6 mb-8">
+
         <p className="text-cyan-400 font-bold mb-3">
           🎤 REPRODUCIENDO AHORA
         </p>
 
         {currentSong ? (
-          <div>
+          <>
             <h2 className="text-3xl font-black">
               {currentSong.title}
             </h2>
             <p className="text-zinc-500">
               {currentSong.artist}
             </p>
-          </div>
+          </>
         ) : (
           <p className="text-zinc-500">
             Esperando canciones...
           </p>
         )}
+
       </div>
 
       {/* ACTIONS */}
       <div className="flex gap-4 mb-8">
+
         <button
           onClick={handleNext}
           className="bg-cyan-500 text-black px-6 py-3 rounded-2xl font-bold"
@@ -247,6 +227,7 @@ function AdminPage() {
         >
           RESTART
         </button>
+
       </div>
 
       {/* QUEUE */}
@@ -266,8 +247,8 @@ function AdminPage() {
             draggable
             onDragStart={() => handleDragStart(index)}
             onDragEnter={() => handleDragEnter(index)}
-            onDragEnd={handleDrop}
             onDragOver={handleDragOver}
+            onDragEnd={handleDrop}
             className="bg-black border border-zinc-800 hover:border-cyan-500 rounded-2xl p-4 mb-4 flex justify-between items-center"
           >
 
