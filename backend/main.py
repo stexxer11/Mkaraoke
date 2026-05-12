@@ -3,8 +3,7 @@ from fastapi import (
     HTTPException,
     WebSocket,
     WebSocketDisconnect,
-    Query,
-    Depends
+    Query
 )
 
 from fastapi.middleware.cors import CORSMiddleware
@@ -19,20 +18,29 @@ import os
 from uuid import uuid4
 from dotenv import load_dotenv
 
-from sqlalchemy.orm import Session
-from sqlalchemy import desc
-
-from database import engine, SessionLocal, Base
-from models import Song
+from sqlalchemy import create_engine, text
 
 # =====================================================
 # ENV
 # =====================================================
 
 load_dotenv()
+
 API_KEY = os.getenv("YOUTUBE_API_KEY")
+DATABASE_URL = os.getenv("DATABASE_URL")
 
 http_client = httpx.AsyncClient(timeout=10)
+
+# =====================================================
+# DB (SUPABASE)
+# =====================================================
+
+engine = create_engine(
+    DATABASE_URL,
+    pool_pre_ping=True,
+    pool_size=5,
+    max_overflow=10
+)
 
 # =====================================================
 # APP
@@ -49,13 +57,13 @@ app.add_middleware(
 )
 
 # =====================================================
-# WS STATE
+# STATE
 # =====================================================
 
 clients = set()
 
 # =====================================================
-# SCHEMAS
+# MODEL
 # =====================================================
 
 class SongCreate(BaseModel):
@@ -65,24 +73,14 @@ class SongCreate(BaseModel):
     youtubeId: str
 
 # =====================================================
-# DB SESSION
-# =====================================================
-
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-
-# =====================================================
-# STARTUP (SUPABASE / POSTGRES)
+# STARTUP
 # =====================================================
 
 @app.on_event("startup")
 def startup():
-    Base.metadata.create_all(bind=engine)
-    print("DB READY (SUPABASE CONNECTED)")
+    with engine.connect() as conn:
+        conn.execute(text("SELECT 1"))
+        print("DB OK (Supabase conectado)")
 
 # =====================================================
 # ROOT
@@ -136,47 +134,60 @@ async def search(q: str = Query(...)):
         return []
 
 # =====================================================
-# HELPERS (SQLALCHEMY OBJECT)
+# HELPERS (SQL RAW)
 # =====================================================
 
-def song_to_dict(song: Song):
+def row_to_song(r):
     return {
-        "id": song.id,
-        "ownerId": song.owner_id,
-        "title": song.title,
-        "artist": song.artist,
-        "youtubeId": song.youtube_id,
-        "status": song.status,
-        "createdAt": song.created_at,
-        "updatedAt": song.updated_at,
+        "id": r[0],
+        "ownerId": r[1],
+        "title": r[2],
+        "artist": r[3],
+        "youtubeId": r[4],
+        "status": r[5],
+        "createdAt": r[6],
+        "updatedAt": r[7],
     }
+
+def fetch_all(query, params={}):
+    with engine.connect() as conn:
+        return conn.execute(text(query), params).fetchall()
+
+def fetch_one(query, params={}):
+    with engine.connect() as conn:
+        return conn.execute(text(query), params).fetchone()
+
+def execute(query, params={}):
+    with engine.begin() as conn:
+        conn.execute(text(query), params)
 
 # =====================================================
 # QUEUE
 # =====================================================
 
-@app.get("/queue")
-def get_queue(db: Session = Depends(get_db)):
+def get_queue():
+    rows = fetch_all("""
+        SELECT * FROM songs
+        WHERE status IN ('queued', 'playing')
+        ORDER BY created_at ASC
+    """)
+    return [row_to_song(r) for r in rows]
 
-    songs = db.query(Song)\
-        .filter(Song.status.in_(["queued", "playing"]))\
-        .order_by(Song.created_at.asc())\
-        .all()
-
-    return [song_to_dict(s) for s in songs]
-
-def get_current(db: Session):
-    return db.query(Song)\
-        .filter(Song.status == "playing")\
-        .first()
+def get_current():
+    row = fetch_one("""
+        SELECT * FROM songs
+        WHERE status = 'playing'
+        LIMIT 1
+    """)
+    return row_to_song(row) if row else None
 
 # =====================================================
-# WS MANUAL SIMPLE
+# BROADCAST
 # =====================================================
 
 async def broadcast(data):
-    dead = set()
     msg = json.dumps(data)
+    dead = set()
 
     for ws in clients:
         try:
@@ -196,23 +207,16 @@ async def ws(websocket: WebSocket):
     await websocket.accept()
     clients.add(websocket)
 
-    db = SessionLocal()
-
-    queue = db.query(Song)\
-        .filter(Song.status.in_(["queued", "playing"]))\
-        .order_by(Song.created_at.asc())\
-        .all()
-
     await websocket.send_json({
         "type": "queue_update",
-        "queue": [song_to_dict(s) for s in queue]
+        "queue": get_queue()
     })
 
-    current = get_current(db)
+    current = get_current()
     if current:
         await websocket.send_json({
             "type": "LOAD_VIDEO",
-            "song": song_to_dict(current)
+            "song": current
         })
 
     try:
@@ -226,102 +230,138 @@ async def ws(websocket: WebSocket):
 # =====================================================
 
 @app.post("/queue/add")
-def add_song(song: SongCreate, db: Session = Depends(get_db)):
+async def add_song(song: SongCreate):
 
+    song_id = str(uuid4())
     now = int(time.time() * 1000)
 
-    playing = get_current(db)
+    # duplicado usuario + video
+    dup = fetch_one("""
+        SELECT 1 FROM songs
+        WHERE owner_id = :owner
+        AND youtube_id = :yt
+        AND status IN ('queued', 'playing')
+    """, {"owner": song.ownerId, "yt": song.youtubeId})
+
+    if dup:
+        raise HTTPException(400, "DUPLICATE_SONG")
+
+    # check playing
+    playing = fetch_one("""
+        SELECT 1 FROM songs WHERE status = 'playing'
+    """)
 
     status = "queued" if playing else "playing"
 
-    new_song = Song(
-        id=str(uuid4()),
-        owner_id=song.ownerId,
-        title=song.title,
-        artist=song.artist,
-        youtube_id=song.youtubeId,
-        status=status,
-        created_at=now,
-        updated_at=now
-    )
+    execute("""
+        INSERT INTO songs
+        (id, owner_id, title, artist, youtube_id, status, created_at, updated_at)
+        VALUES
+        (:id, :owner, :title, :artist, :yt, :status, :created, :updated)
+    """, {
+        "id": song_id,
+        "owner": song.ownerId,
+        "title": song.title,
+        "artist": song.artist,
+        "yt": song.youtubeId,
+        "status": status,
+        "created": now,
+        "updated": now
+    })
 
-    db.add(new_song)
-    db.commit()
+    await broadcast({
+        "type": "queue_update",
+        "queue": get_queue()
+    })
 
     if status == "playing":
-        asyncio.create_task(broadcast({
+        await broadcast({
             "type": "LOAD_VIDEO",
-            "song": song_to_dict(new_song)
-        }))
+            "song": {
+                "id": song_id,
+                "ownerId": song.ownerId,
+                "title": song.title,
+                "artist": song.artist,
+                "youtubeId": song.youtubeId
+            }
+        })
 
-    asyncio.create_task(broadcast({
-        "type": "queue_update",
-        "queue": get_queue(db)
-    }))
-
-    return {"ok": True, "id": new_song.id}
+    return {"ok": True, "id": song_id, "status": status}
 
 # =====================================================
 # NEXT SONG
 # =====================================================
 
 @app.post("/queue/next")
-def next_song(db: Session = Depends(get_db)):
+async def next_song():
 
     now = int(time.time() * 1000)
 
-    current = get_current(db)
-    if current:
-        current.status = "done"
-        current.updated_at = now
+    execute("""
+        UPDATE songs
+        SET status = 'done', updated_at = :now
+        WHERE status = 'playing'
+    """, {"now": now})
 
-    nxt = db.query(Song)\
-        .filter(Song.status == "queued")\
-        .order_by(Song.created_at.asc())\
-        .first()
+    nxt = fetch_one("""
+        SELECT id FROM songs
+        WHERE status = 'queued'
+        ORDER BY created_at ASC
+        LIMIT 1
+    """)
 
     if nxt:
-        nxt.status = "playing"
-        nxt.updated_at = now
+        execute("""
+            UPDATE songs
+            SET status = 'playing', updated_at = :now
+            WHERE id = :id
+        """, {"now": now, "id": nxt[0]})
 
-    db.commit()
-
-    asyncio.create_task(broadcast({"type": "queue_update", "queue": get_queue(db)}))
-    asyncio.create_task(broadcast({"type": "LOAD_VIDEO", "song": song_to_dict(nxt)} if nxt else {"type": "STOP_VIDEO"}))
+    await broadcast({"type": "queue_update", "queue": get_queue()})
+    await broadcast({"type": "LOAD_VIDEO", "song": get_current()})
 
     return {"ok": True}
 
 # =====================================================
-# EDIT (SIN RELOAD TV SI NO ES CURRENT)
+# REMOVE
+# =====================================================
+
+@app.delete("/queue/remove/{song_id}")
+async def remove_song(song_id: str):
+
+    execute("""
+        UPDATE songs
+        SET status = 'cancelled', updated_at = :now
+        WHERE id = :id
+    """, {"now": int(time.time()*1000), "id": song_id})
+
+    await broadcast({"type": "queue_update", "queue": get_queue()})
+
+    return {"ok": True}
+
+# =====================================================
+# EDIT
 # =====================================================
 
 @app.put("/queue/edit/{song_id}")
-def edit_song(song_id: str, data: dict, db: Session = Depends(get_db)):
+async def edit_song(song_id: str, data: dict):
 
-    song = db.query(Song).filter(Song.id == song_id).first()
+    execute("""
+        UPDATE songs
+        SET title = COALESCE(:title, title),
+            artist = COALESCE(:artist, artist),
+            youtube_id = COALESCE(:yt, youtube_id),
+            updated_at = :now
+        WHERE id = :id
+    """, {
+        "title": data.get("title"),
+        "artist": data.get("artist"),
+        "yt": data.get("youtubeId"),
+        "now": int(time.time()*1000),
+        "id": song_id
+    })
 
-    if not song:
-        raise HTTPException(404, "SONG_NOT_FOUND")
-
-    song.title = data.get("title", song.title)
-    song.artist = data.get("artist", song.artist)
-    song.youtube_id = data.get("youtubeId", song.youtube_id)
-    song.updated_at = int(time.time() * 1000)
-
-    db.commit()
-
-    asyncio.create_task(broadcast({
-        "type": "queue_update",
-        "queue": get_queue(db)
-    }))
-
-    current = get_current(db)
-
-    if current and current.id == song_id:
-        asyncio.create_task(broadcast({
-            "type": "LOAD_VIDEO",
-            "song": song_to_dict(song)
-        }))
+    await broadcast({"type": "queue_update", "queue": get_queue()})
 
     return {"ok": True}
 
@@ -330,23 +370,14 @@ def edit_song(song_id: str, data: dict, db: Session = Depends(get_db)):
 # =====================================================
 
 @app.put("/queue/cancel/{song_id}")
-def cancel_song(song_id: str, db: Session = Depends(get_db)):
+async def cancel_song(song_id: str):
 
-    song = db.query(Song).filter(Song.id == song_id).first()
+    execute("""
+        UPDATE songs
+        SET status = 'cancelled', updated_at = :now
+        WHERE id = :id
+    """, {"now": int(time.time()*1000), "id": song_id})
 
-    if not song:
-        raise HTTPException(404, "SONG_NOT_FOUND")
-
-    was_playing = song.status == "playing"
-
-    song.status = "cancelled"
-    song.updated_at = int(time.time() * 1000)
-
-    db.commit()
-
-    if was_playing:
-        next_song(db)
-
-    asyncio.create_task(broadcast({"type": "queue_update", "queue": get_queue(db)}))
+    await broadcast({"type": "queue_update", "queue": get_queue()})
 
     return {"ok": True}
