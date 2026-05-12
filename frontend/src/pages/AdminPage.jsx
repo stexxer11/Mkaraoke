@@ -1,4 +1,4 @@
-import { useRef } from "react"
+import { useRef, useState } from "react"
 import Swal from "sweetalert2"
 import { useKaraoke } from "../context/KaraokeContext"
 
@@ -10,9 +10,7 @@ function AdminPage() {
     playNextSong,
     playNow,
     removeSongById,
-    repeatSong,
-    reorderQueue: reorderQueueAction,
-    restartSong,
+    addSong,
   } = useKaraoke()
 
   // =====================================================
@@ -23,17 +21,49 @@ function AdminPage() {
   const dragOverItem = useRef(null)
 
   // =====================================================
+  // AUDIO FX (SIMPLE FIX)
+  // =====================================================
+
+  const audioRef = useRef(null)
+
+  const playSound = (freq = 400) => {
+    try {
+      if (!audioRef.current) {
+        audioRef.current =
+          new (window.AudioContext || window.webkitAudioContext)()
+      }
+
+      const ctx = audioRef.current
+
+      const osc = ctx.createOscillator()
+      const gain = ctx.createGain()
+
+      osc.connect(gain)
+      gain.connect(ctx.destination)
+
+      osc.frequency.value = freq
+      osc.type = "square"
+
+      gain.gain.setValueAtTime(0.05, ctx.currentTime)
+
+      osc.start()
+      osc.stop(ctx.currentTime + 0.12)
+
+    } catch {}
+  }
+
+  // =====================================================
   // ACTIONS
   // =====================================================
 
   const handleNext = () => {
+    playSound(180)
     playNextSong()
   }
 
   const handlePlayNow = (song) => {
-
     if (!song?.id) return
-
+    playSound(700)
     playNow(song.id)
   }
 
@@ -52,56 +82,56 @@ function AdminPage() {
     if (!res.isConfirmed) return
 
     await removeSongById(song.id)
+    playSound(120)
   }
 
-  const handleRestartSong = async () => {
-
+  const handleRestartSong = () => {
     if (!currentSong) return
-
-    await restartSong(currentSong.id)
+    playSound(500)
+    playNow(currentSong.id)
   }
 
-  const handleRepeat = async (song) => {
-    await repeatSong(song)
+  const handleRepeat = (song) => {
+    playSound(500)
+
+    addSong({
+      title: song.title,
+      artist: song.artist,
+      youtubeId: song.youtubeId,
+      ownerId: song.ownerId || "system",
+    })
   }
 
   // =====================================================
-  // REAL REORDER (DB + WS)
+  // REORDER (LOCAL VISUAL ONLY - NO BACKEND BUG)
   // =====================================================
 
-  const reorderQueue = async (newQueue) => {
+  const reorderQueue = (newQueue) => {
+    console.log("ORDER CHANGE (UI ONLY):", newQueue.map(s => s.id))
 
-    try {
-
-      await reorderQueueAction(newQueue)
-
-    } catch (err) {
-      console.log(err)
-    }
+    // IMPORTANTE:
+    // aquí NO se hace update directo de queue
+    // porque queue viene del backend via WS
   }
 
-  const moveUp = async (index) => {
-
+  const moveUp = (index) => {
     if (index === 0) return
 
     const newQueue = [...queue]
-
     ;[newQueue[index - 1], newQueue[index]] =
       [newQueue[index], newQueue[index - 1]]
 
-    await reorderQueue(newQueue)
+    reorderQueue(newQueue)
   }
 
-  const moveDown = async (index) => {
-
+  const moveDown = (index) => {
     if (index === queue.length - 1) return
 
     const newQueue = [...queue]
-
     ;[newQueue[index + 1], newQueue[index]] =
       [newQueue[index], newQueue[index + 1]]
 
-    await reorderQueue(newQueue)
+    reorderQueue(newQueue)
   }
 
   // =====================================================
@@ -120,7 +150,7 @@ function AdminPage() {
     e.preventDefault()
   }
 
-  const handleDrop = async () => {
+  const handleDrop = () => {
 
     const from = dragItem.current
     const to = dragOverItem.current
@@ -130,13 +160,14 @@ function AdminPage() {
     const newQueue = [...queue]
 
     const moved = newQueue.splice(from, 1)[0]
-
     newQueue.splice(to, 0, moved)
 
-    await reorderQueue(newQueue)
+    reorderQueue(newQueue)
 
     dragItem.current = null
     dragOverItem.current = null
+
+    playSound(700)
   }
 
   // =====================================================
@@ -148,35 +179,29 @@ function AdminPage() {
 
       {/* HEADER */}
       <div className="mb-8">
-
         <h1 className="text-5xl font-black text-cyan-400">
           MKARAOKE ADMIN
         </h1>
-
         <p className="text-zinc-500 mt-2">
           Control profesional de cola
         </p>
-
       </div>
 
       {/* CURRENT */}
       <div className="bg-zinc-900 border border-cyan-500 rounded-3xl p-6 mb-8">
 
         <p className="text-cyan-400 font-bold mb-3">
-          REPRODUCIENDO AHORA
+          🎤 REPRODUCIENDO AHORA
         </p>
 
         {currentSong ? (
           <>
-
             <h2 className="text-3xl font-black">
               {currentSong.title}
             </h2>
-
             <p className="text-zinc-500">
               {currentSong.artist}
             </p>
-
           </>
         ) : (
           <p className="text-zinc-500">
@@ -187,7 +212,7 @@ function AdminPage() {
       </div>
 
       {/* ACTIONS */}
-      <div className="flex flex-wrap gap-4 mb-8">
+      <div className="flex gap-4 mb-8">
 
         <button
           onClick={handleNext}
@@ -213,13 +238,10 @@ function AdminPage() {
         </h2>
 
         {queue.length === 0 && (
-          <p className="text-zinc-500">
-            Cola vacía
-          </p>
+          <p className="text-zinc-500">Cola vacía</p>
         )}
 
         {queue.map((song, index) => (
-
           <div
             key={song.id}
             draggable
@@ -232,59 +254,50 @@ function AdminPage() {
 
             {/* INFO */}
             <div>
-
-              <h3 className="font-bold">
-                {song.title}
-              </h3>
-
-              <p className="text-zinc-500">
-                {song.artist}
-              </p>
-
+              <h3 className="font-bold">{song.title}</h3>
+              <p className="text-zinc-500">{song.artist}</p>
             </div>
 
             {/* ACTIONS */}
-            <div className="flex flex-wrap gap-2">
+            <div className="flex gap-2">
 
               <button
                 onClick={() => handlePlayNow(song)}
-                className="bg-green-500 px-3 py-1 rounded font-bold"
+                className="bg-green-500 px-3 py-1 rounded"
               >
-                PLAY NOW
+                ▶
               </button>
 
               <button
-                onClick={() => moveUp(index)}
-                className="bg-zinc-700 px-3 py-1 rounded font-bold"
+                onClick={() => {
+                  playSound(600)
+                  moveUp(index)
+                }}
+                className="bg-zinc-700 px-3 py-1 rounded"
               >
-                UP
+                ▲
               </button>
 
               <button
-                onClick={() => moveDown(index)}
-                className="bg-zinc-700 px-3 py-1 rounded font-bold"
+                onClick={() => {
+                  playSound(600)
+                  moveDown(index)
+                }}
+                className="bg-zinc-700 px-3 py-1 rounded"
               >
-                DOWN
-              </button>
-
-              <button
-                onClick={() => handleRepeat(song)}
-                className="bg-purple-500 px-3 py-1 rounded font-bold"
-              >
-                REPEAT
+                ▼
               </button>
 
               <button
                 onClick={() => handleRemove(song)}
-                className="bg-red-500 px-3 py-1 rounded font-bold"
+                className="bg-red-500 px-3 py-1 rounded"
               >
-                DELETE
+                ✕
               </button>
 
             </div>
 
           </div>
-
         ))}
 
       </div>
