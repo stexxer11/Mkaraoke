@@ -1,33 +1,20 @@
-import {
-  useState,
-  useEffect,
-  useRef,
-  useMemo,
-} from "react"
-
+import { useState, useEffect, useRef, useMemo } from "react"
 import debounce from "lodash.debounce"
+
+import { useKaraoke } from "../context/KaraokeContext"
 
 import Swal from "sweetalert2"
 
-import {
-  useKaraoke
-} from "../context/KaraokeContext"
-
-import {
-  searchYouTube
-} from "../services/youtubeApi"
+import { searchYouTube } from "../services/youtubeApi"
 
 function MobilePage() {
 
   const {
-
     queue,
     addSong,
     editSong,
-
     deviceId,
     currentSong,
-
   } = useKaraoke()
 
   // =====================================================
@@ -50,113 +37,14 @@ function MobilePage() {
     useState(null)
 
   // =====================================================
-  // REFS
+  // ALERT CONTROL
   // =====================================================
 
   const alertOpen =
     useRef(null)
 
-  const wsRef =
-    useRef(null)
-
-  // =====================================================
-  // WEBSOCKET
-  // =====================================================
-
-  useEffect(() => {
-
-    const ws = new WebSocket(
-      `${import.meta.env.VITE_WS_URL.replace(
-        "https",
-        "wss"
-      )}/ws`
-    )
-
-    wsRef.current = ws
-
-    ws.onopen = () => {
-
-      console.log(
-        "MOBILE WS CONNECTED"
-      )
-
-    }
-
-    ws.onmessage = (event) => {
-
-      try {
-
-        const data =
-          JSON.parse(
-            event.data
-          )
-
-        // =====================================
-        // SONG STARTED
-        // =====================================
-
-        if (
-          data.type ===
-          "LOAD_VIDEO"
-        ) {
-
-          console.log(
-            "SONG PLAYING",
-            data.song?.title
-          )
-
-        }
-
-        // =====================================
-        // QUEUE UPDATE
-        // =====================================
-
-        if (
-          data.type ===
-          "queue_update"
-        ) {
-
-          console.log(
-            "QUEUE UPDATED"
-          )
-
-        }
-
-      } catch (err) {
-
-        console.log(
-          "WS PARSE ERROR",
-          err
-        )
-
-      }
-
-    }
-
-    ws.onerror = (err) => {
-
-      console.log(
-        "WS ERROR",
-        err
-      )
-
-    }
-
-    ws.onclose = () => {
-
-      console.log(
-        "WS CLOSED"
-      )
-
-    }
-
-    return () => {
-
-      ws.close()
-
-    }
-
-  }, [])
+  const lastQueueRef =
+    useRef("")
 
   // =====================================================
   // SEARCH
@@ -165,62 +53,49 @@ function MobilePage() {
   const debouncedSearch =
     useMemo(
 
-      () =>
+      () => debounce(
 
-        debounce(
+        async (value) => {
 
-          async (value) => {
+          if (
+            !value ||
+            value.trim().length < 3
+          ) {
 
-            if (
+            setResults([])
 
-              !value ||
+            return
 
-              value.trim().length < 3
+          }
 
-            ) {
+          setLoading(true)
 
-              setResults([])
+          try {
 
-              return
+            const data =
+              await searchYouTube(value)
 
-            }
+            setResults(data || [])
 
-            setLoading(true)
+          } catch (err) {
 
-            try {
+            console.log(err)
 
-              const data =
-                await searchYouTube(
-                  value
-                )
+            setResults([])
 
-              setResults(
-                data || []
-              )
+          }
 
-            } catch (err) {
+          setLoading(false)
 
-              console.log(err)
+        },
 
-              setResults([])
+        600
 
-            }
-
-            setLoading(false)
-
-          },
-
-          700
-
-        ),
+      ),
 
       []
 
     )
-
-  // =====================================================
-  // SEARCH INPUT
-  // =====================================================
 
   const handleSearch = (
     value
@@ -231,10 +106,6 @@ function MobilePage() {
     debouncedSearch(value)
 
   }
-
-  // =====================================================
-  // CLEANUP SEARCH
-  // =====================================================
 
   useEffect(() => {
 
@@ -247,45 +118,24 @@ function MobilePage() {
   }, [debouncedSearch])
 
   // =====================================================
-  // ACTIVE QUEUE
+  // MULTI USER SAFE
   // =====================================================
 
-  const activeQueue =
+  const mySongs =
     useMemo(() => {
 
       return queue.filter(
 
         song =>
 
-          song.status ===
-            "queued" ||
-
-          song.status ===
-            "playing"
-
-      )
-
-    }, [queue])
-
-  // =====================================================
-  // MY SONGS
-  // =====================================================
-
-  const mySongs =
-    useMemo(() => {
-
-      return activeQueue.filter(
-
-        song =>
-
-          song.ownerId ===
-          deviceId
+          String(song.ownerId) ===
+          String(deviceId)
 
       )
 
     }, [
 
-      activeQueue,
+      queue,
       deviceId
 
     ])
@@ -297,53 +147,90 @@ function MobilePage() {
   const myCurrentSong =
     useMemo(() => {
 
-      return mySongs[0] || null
+      return mySongs.find(
+
+        s =>
+          s.status === "playing"
+
+      )
 
     }, [mySongs])
 
   // =====================================================
-  // POSITION IN QUEUE
+  // UPCOMING SONGS
   // =====================================================
 
-  const myQueueIndex =
+  const myQueuedSongs =
     useMemo(() => {
 
-      if (!myCurrentSong)
-        return -1
+      return mySongs.filter(
 
-      return activeQueue.findIndex(
+        s =>
+          s.status === "queued"
 
-        song =>
+      )
 
-          song.id ===
-          myCurrentSong.id
+    }, [mySongs])
 
+  // =====================================================
+  // QUEUE POSITION
+  // =====================================================
+
+  const turnsLeft =
+    useMemo(() => {
+
+      if (!currentSong) return 0
+
+      const activeQueue =
+        queue.filter(
+
+          s =>
+
+            s.status ===
+              "queued" ||
+
+            s.status ===
+              "playing"
+
+        )
+
+      const myNextSong =
+        myQueuedSongs[0]
+
+      if (!myNextSong)
+        return 0
+
+      const currentIndex =
+        activeQueue.findIndex(
+          s =>
+            s.id === currentSong.id
+        )
+
+      const myIndex =
+        activeQueue.findIndex(
+          s =>
+            s.id === myNextSong.id
+        )
+
+      if (
+        currentIndex === -1 ||
+        myIndex === -1
+      ) {
+        return 0
+      }
+
+      return Math.max(
+        myIndex - currentIndex,
+        0
       )
 
     }, [
 
-      activeQueue,
-      myCurrentSong
+      queue,
+      currentSong,
+      myQueuedSongs
 
     ])
-
-  // =====================================================
-  // TURN SYSTEM
-  // =====================================================
-
-  const turnsLeft =
-
-    myQueueIndex <= 0
-      ? 0
-      : myQueueIndex
-
-  const isMyTurn =
-    myQueueIndex !== -1
-
-  const isMySongPlaying =
-
-    currentSong?.id ===
-    myCurrentSong?.id
 
   // =====================================================
   // ALERT SYSTEM
@@ -351,18 +238,36 @@ function MobilePage() {
 
   useEffect(() => {
 
+    const queueHash =
+      JSON.stringify(
+
+        queue.map(s => ({
+          id: s.id,
+          status: s.status
+        }))
+
+      )
+
+    if (
+      queueHash ===
+      lastQueueRef.current
+    ) {
+      return
+    }
+
+    lastQueueRef.current =
+      queueHash
+
     // =========================================
-    // NO SONG
+    // RESET
     // =========================================
 
-    if (!myCurrentSong) {
+    if (!currentSong) {
 
       alertOpen.current = null
 
       if (Swal.isVisible()) {
-
         Swal.close()
-
       }
 
       return
@@ -370,56 +275,47 @@ function MobilePage() {
     }
 
     // =========================================
-    // UNIQUE ALERT KEY
+    // PREVENT DUPLICATE
     // =========================================
 
-    const uniqueKey =
-
-      `${currentSong?.id}-${myCurrentSong?.id}`
+    const alertId =
+      `${currentSong.id}-${deviceId}`
 
     if (
-
       alertOpen.current ===
-      uniqueKey
-
+      alertId
     ) {
       return
     }
 
     alertOpen.current =
-      uniqueKey
+      alertId
 
     // =========================================
-    // MY SONG PLAYING
+    // 1. MY SONG PLAYING
     // =========================================
 
-    if (isMySongPlaying) {
+    if (myCurrentSong) {
 
       Swal.fire({
 
         title:
-          "Tu canción está sonando",
+          "Disfruta tu canción 🎤",
 
         html: `
-
-          <div style="text-align:center">
+          <div style="font-size:16px;text-align:center">
 
             <b style="font-size:18px">
-
               ${myCurrentSong.title}
-
             </b>
 
             <br/>
 
             <span style="color:#22d3ee">
-
-              Ya estás en pantalla
-
+              Estás en pantalla ahora
             </span>
 
           </div>
-
         `,
 
         background: "#000",
@@ -439,87 +335,129 @@ function MobilePage() {
     }
 
     // =========================================
-    // WAITING ALERT
+    // 2. I HAVE SONGS IN QUEUE
     // =========================================
 
-    Swal.fire({
+    if (myQueuedSongs.length > 0) {
 
-      title:
-        "Tu canción está en cola",
+      Swal.fire({
 
-      html: `
+        title:
+          "Tu canción está en cola",
 
-        <div style="text-align:center">
+        html: `
+          <div style="font-size:16px;text-align:center">
 
-          <b>
+            <b>
+              ${myQueuedSongs[0].title}
+            </b>
 
-            ${myCurrentSong.title}
+            <br/>
 
-          </b>
+            <span style="color:#9ca3af">
 
-          <br/>
+              ${
+                turnsLeft <= 1
+                  ? "Tu turno viene pronto"
+                  : `Te faltan ${turnsLeft} turnos`
+              }
 
-          <span style="color:#9ca3af">
+            </span>
 
-            ${
+          </div>
+        `,
 
-              turnsLeft === 0
+        background: "#000",
 
-                ? "Prepárate"
+        color: "#06b6d4",
 
-                : `Faltan ${turnsLeft} turnos`
+        showConfirmButton: false,
 
-            }
+        allowOutsideClick: false,
 
-          </span>
+        allowEscapeKey: false
 
-        </div>
+      })
 
-      `,
+      return
 
-      background: "#000",
+    }
 
-      color: "#06b6d4",
+    // =========================================
+    // 3. READY TO EDIT
+    // =========================================
 
-      showDenyButton:
-        turnsLeft <= 1,
+    if (
+      currentSong &&
+      currentSong.ownerId === deviceId
+    ) {
 
-      denyButtonText:
-        "Editar canción",
+      Swal.fire({
 
-      showConfirmButton: false,
+        title:
+          "Tu turno está activo 🎤",
 
-      allowOutsideClick: false,
+        html: `
+          <div style="font-size:16px;text-align:center">
 
-      allowEscapeKey: false
+            <b style="font-size:18px">
+              ${currentSong.title}
+            </b>
 
-    }).then(res => {
+            <br/>
 
-      if (res.isDenied) {
+            <span style="color:#22d3ee">
+              Puedes prepararte
+            </span>
 
-        setEditMode(true)
+          </div>
+        `,
 
-        setEditSongData(
-          myCurrentSong
-        )
+        background: "#000",
 
-        setSearch("")
+        color: "#06b6d4",
 
-        setResults([])
+        showDenyButton: true,
 
-        alertOpen.current =
-          null
+        denyButtonText:
+          "Editar canción",
 
-      }
+        showConfirmButton: false,
 
-    })
+        allowOutsideClick: false,
+
+        allowEscapeKey: false
+
+      }).then(res => {
+
+        if (res.isDenied) {
+
+          setEditMode(true)
+
+          setEditSongData(
+            currentSong
+          )
+
+          setSearch("")
+
+          setResults([])
+
+          alertOpen.current = null
+
+        }
+
+      })
+
+    }
 
   }, [
 
+    queue,
     currentSong,
+    deviceId,
     myCurrentSong,
-    turnsLeft,
-    isMySongPlaying
+    myQueuedSongs,
+    turnsLeft
 
   ])
 
@@ -529,10 +467,6 @@ function MobilePage() {
 
   const handleAddSong =
     async (song) => {
-
-      // =====================================
-      // ONLY 1 SONG PER USER
-      // =====================================
 
       if (mySongs.length > 0) {
 
@@ -557,10 +491,6 @@ function MobilePage() {
 
       }
 
-      // =====================================
-      // ADD
-      // =====================================
-
       const res =
         await addSong({
 
@@ -575,24 +505,18 @@ function MobilePage() {
 
         })
 
-      // =====================================
-      // ERROR
-      // =====================================
-
-      if (!res?.ok) {
+      if (res?.ok) {
 
         Swal.fire({
 
-          icon: "error",
+          icon: "success",
 
           title:
-            res?.error ||
-
-            "No se pudo agregar",
+            "Canción agregada",
 
           toast: true,
 
-          timer: 2000,
+          timer: 1500,
 
           position: "top-end",
 
@@ -600,39 +524,12 @@ function MobilePage() {
 
         })
 
-        return
-
       }
-
-      // =====================================
-      // SUCCESS
-      // =====================================
-
-      Swal.fire({
-
-        icon: "success",
-
-        title:
-          "Canción agregada",
-
-        toast: true,
-
-        timer: 1500,
-
-        position: "top-end",
-
-        showConfirmButton: false
-
-      })
-
-      setSearch("")
-
-      setResults([])
 
     }
 
   // =====================================================
-  // EDIT SONG
+  // REPLACE SONG
   // =====================================================
 
   const handleReplaceSong =
@@ -647,7 +544,6 @@ function MobilePage() {
           editSongData.id,
 
           {
-
             title:
               song.title,
 
@@ -656,23 +552,30 @@ function MobilePage() {
 
             youtubeId:
               song.youtubeId
-
           }
 
         )
 
-      if (!res?.ok) {
+      if (res?.ok) {
+
+        setEditMode(false)
+
+        setEditSongData(null)
+
+        setSearch("")
+
+        setResults([])
 
         Swal.fire({
 
-          icon: "error",
+          icon: "success",
 
           title:
-            "No se pudo actualizar",
+            "Canción actualizada",
 
           toast: true,
 
-          timer: 2000,
+          timer: 1500,
 
           position: "top-end",
 
@@ -680,34 +583,7 @@ function MobilePage() {
 
         })
 
-        return
-
       }
-
-      setEditMode(false)
-
-      setEditSongData(null)
-
-      setSearch("")
-
-      setResults([])
-
-      Swal.fire({
-
-        icon: "success",
-
-        title:
-          "Canción actualizada",
-
-        toast: true,
-
-        timer: 1500,
-
-        position: "top-end",
-
-        showConfirmButton: false
-
-      })
 
     }
 
@@ -717,7 +593,15 @@ function MobilePage() {
 
   return (
 
-    <div className="min-h-screen text-white flex flex-col bg-black">
+    <div
+      className="
+        min-h-screen
+        bg-black
+        text-white
+        flex
+        flex-col
+      "
+    >
 
       {/* =========================================
           HEADER
@@ -726,9 +610,10 @@ function MobilePage() {
       <div
         className="
           p-5
-          glass
           border-b
           border-white/10
+          bg-zinc-950
+          backdrop-blur-xl
         "
       >
 
@@ -737,7 +622,6 @@ function MobilePage() {
             text-3xl
             font-black
             text-cyan-400
-            glow-cyan
           "
         >
           MKaraoke
@@ -766,117 +650,29 @@ function MobilePage() {
             w-full
             p-4
             rounded-2xl
-            glass
+            bg-zinc-900
             border
             border-white/10
             outline-none
           "
 
           placeholder={
-
             editMode
               ? "Buscar reemplazo..."
               : "Buscar en YouTube..."
-
           }
 
           value={search}
 
           onChange={(e) =>
-
             handleSearch(
               e.target.value
             )
-
           }
 
         />
 
       </div>
-
-      {/* =========================================
-          MY STATUS
-      ========================================= */}
-
-      {myCurrentSong && (
-
-        <div className="px-5 pb-3">
-
-          <div
-            className="
-              bg-cyan-500/10
-              border
-              border-cyan-400/20
-              rounded-2xl
-              p-4
-            "
-          >
-
-            <p
-              className="
-                text-cyan-300
-                text-sm
-                mb-1
-              "
-            >
-              Tu canción
-            </p>
-
-            <h2
-              className="
-                font-bold
-                text-lg
-                truncate
-              "
-            >
-              {myCurrentSong.title}
-            </h2>
-
-            <p
-              className="
-                text-zinc-400
-                text-sm
-                truncate
-              "
-            >
-              {myCurrentSong.artist}
-            </p>
-
-            <div className="mt-3">
-
-              {isMySongPlaying ? (
-
-                <span
-                  className="
-                    text-green-400
-                    text-sm
-                    font-bold
-                  "
-                >
-                  SONANDO AHORA
-                </span>
-
-              ) : (
-
-                <span
-                  className="
-                    text-cyan-300
-                    text-sm
-                    font-bold
-                  "
-                >
-                  Faltan {turnsLeft} turnos
-                </span>
-
-              )}
-
-            </div>
-
-          </div>
-
-        </div>
-
-      )}
 
       {/* =========================================
           RESULTS
@@ -885,18 +681,16 @@ function MobilePage() {
       <div
         className="
           flex-1
+          overflow-y-auto
           p-5
           space-y-4
-          overflow-y-auto
         "
       >
 
         {loading && (
 
           <p className="text-zinc-500">
-
-            Buscando...
-
+            Buscando en YouTube...
           </p>
 
         )}
@@ -908,28 +702,23 @@ function MobilePage() {
             key={song.youtubeId}
 
             className="
-              glass
-              tap
-              glow-cyan
+              bg-zinc-950
+              border
+              border-white/10
+              rounded-3xl
               p-3
-              rounded-2xl
               flex
               gap-4
               items-center
             "
           >
 
-            {/* THUMB */}
-
             <div
               className="
                 w-20
                 h-20
-                rounded-xl
+                rounded-2xl
                 overflow-hidden
-                bg-black
-                border
-                border-white/10
                 shrink-0
               "
             >
@@ -947,8 +736,6 @@ function MobilePage() {
               />
 
             </div>
-
-            {/* INFO */}
 
             <div className="flex-1 min-w-0">
 
@@ -971,47 +758,28 @@ function MobilePage() {
                 {song.artist}
               </p>
 
-              <p
-                className="
-                  text-cyan-400/60
-                  text-xs
-                  mt-1
-                "
-              >
-                Disponible
-              </p>
-
             </div>
-
-            {/* BUTTON */}
 
             <button
 
               onClick={() =>
 
                 editMode
-
                   ? handleReplaceSong(song)
-
                   : handleAddSong(song)
 
               }
 
               className="
-                tap
-                bg-cyan-500
+                bg-cyan-400
                 text-black
-                px-4
-                py-2
-                rounded-xl
-                font-bold
+                px-5
+                py-3
+                rounded-2xl
+                font-black
               "
             >
-
-              {editMode
-                ? "✓"
-                : "+"}
-
+              +
             </button>
 
           </div>
@@ -1029,15 +797,15 @@ function MobilePage() {
           p-4
           border-t
           border-white/10
-          glass
           text-center
           text-zinc-400
+          bg-zinc-950
         "
       >
 
         Cola global:
         {" "}
-        {activeQueue.length}
+        {queue.length}
 
       </div>
 
