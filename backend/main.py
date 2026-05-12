@@ -449,3 +449,39 @@ async def edit_song(song_id: str, data: dict):
         "ok": True,
         "message": "SONG_UPDATED"
     }
+
+
+# =====================================================
+# CANCEL SONG (FIX REAL ENDPOINT)
+# =====================================================
+
+@app.put("/queue/cancel/{song_id}")
+async def cancel_song(song_id: str):
+
+    now = int(time.time() * 1000)
+
+    cursor = await db.execute("""
+        SELECT * FROM songs WHERE id = ?
+    """, (song_id,))
+
+    song = await cursor.fetchone()
+
+    if not song:
+        raise HTTPException(status_code=404, detail="SONG_NOT_FOUND")
+
+    await db.execute("""
+        UPDATE songs
+        SET status = 'cancelled',
+            updated_at = ?
+        WHERE id = ?
+    """, (now, song_id))
+
+    await db.commit()
+
+    await broadcast_queue()
+    await broadcast_player()
+
+    return {
+        "ok": True,
+        "message": "SONG_CANCELLED"
+    }
