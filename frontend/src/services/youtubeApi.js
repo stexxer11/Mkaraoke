@@ -1,16 +1,7 @@
 import api from "./api";
 
 // =========================
-// GET QUEUE
-// =========================
-
-export const getQueue = async () => {
-  const res = await api.get("/queue");
-  return res.data;
-};
-
-// =========================
-// ADD SONG (BACKEND: /song)
+// ADD SONG
 // =========================
 
 export const addSongApi = async (song) => {
@@ -19,7 +10,7 @@ export const addSongApi = async (song) => {
 };
 
 // =========================
-// EDIT SONG (BACKEND: /song/:id)
+// EDIT SONG
 // =========================
 
 export const editSongApi = async (id, data) => {
@@ -28,7 +19,7 @@ export const editSongApi = async (id, data) => {
 };
 
 // =========================
-// CANCEL SONG (BACKEND: /song/:id/cancel)
+// CANCEL SONG
 // =========================
 
 export const cancelSongApi = async (id) => {
@@ -37,7 +28,7 @@ export const cancelSongApi = async (id) => {
 };
 
 // =========================
-// NEXT SONG (BACKEND: /next)
+// NEXT SONG
 // =========================
 
 export const nextSongApi = async () => {
@@ -46,7 +37,7 @@ export const nextSongApi = async () => {
 };
 
 // =========================
-// PLAY NOW (BACKEND: /play-now/:id)
+// PLAY NOW
 // =========================
 
 export const playNowApi = async (id) => {
@@ -55,11 +46,10 @@ export const playNowApi = async (id) => {
 };
 
 // =========================
-// REMOVE SONG (NO EXISTE EN BACKEND ACTUAL)
+// REMOVE SONG (alias seguro)
 // =========================
 
 export const removeSongApi = async (id) => {
-  // equivalente seguro
   const res = await api.post(`/song/${id}/cancel`);
   return res.data;
 };
