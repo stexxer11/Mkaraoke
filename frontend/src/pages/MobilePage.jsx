@@ -1,324 +1,1017 @@
-import { useState, useEffect, useRef, useMemo } from "react"
+import {
+  useState,
+  useEffect,
+  useRef,
+  useMemo,
+} from "react"
+
 import debounce from "lodash.debounce"
 
-import { useKaraoke } from "../context/KaraokeContext"
 import Swal from "sweetalert2"
-import { searchYouTube } from "../services/youtubeApi"
+
+import {
+  useKaraoke
+} from "../context/KaraokeContext"
+
+import {
+  searchYouTube
+} from "../services/youtubeApi"
 
 function MobilePage() {
 
   const {
+
     queue,
     addSong,
     editSong,
+
     deviceId,
     currentSong,
+
   } = useKaraoke()
 
-  const [search, setSearch] = useState("")
-  const [results, setResults] = useState([])
-  const [loading, setLoading] = useState(false)
+  // =====================================================
+  // STATES
+  // =====================================================
 
-  const [editMode, setEditMode] = useState(false)
-  const [editSongData, setEditSongData] = useState(null)
+  const [search, setSearch] =
+    useState("")
 
-  const alertOpen = useRef(null)
+  const [results, setResults] =
+    useState([])
 
-  // =========================
+  const [loading, setLoading] =
+    useState(false)
+
+  const [editMode, setEditMode] =
+    useState(false)
+
+  const [editSongData, setEditSongData] =
+    useState(null)
+
+  // =====================================================
+  // REFS
+  // =====================================================
+
+  const alertOpen =
+    useRef(null)
+
+  const wsRef =
+    useRef(null)
+
+  // =====================================================
+  // WEBSOCKET
+  // =====================================================
+
+  useEffect(() => {
+
+    const ws = new WebSocket(
+      `${import.meta.env.VITE_WS_URL.replace(
+        "https",
+        "wss"
+      )}/ws`
+    )
+
+    wsRef.current = ws
+
+    ws.onopen = () => {
+
+      console.log(
+        "MOBILE WS CONNECTED"
+      )
+
+    }
+
+    ws.onmessage = (event) => {
+
+      try {
+
+        const data =
+          JSON.parse(
+            event.data
+          )
+
+        // =====================================
+        // SONG STARTED
+        // =====================================
+
+        if (
+          data.type ===
+          "LOAD_VIDEO"
+        ) {
+
+          console.log(
+            "SONG PLAYING",
+            data.song?.title
+          )
+
+        }
+
+        // =====================================
+        // QUEUE UPDATE
+        // =====================================
+
+        if (
+          data.type ===
+          "queue_update"
+        ) {
+
+          console.log(
+            "QUEUE UPDATED"
+          )
+
+        }
+
+      } catch (err) {
+
+        console.log(
+          "WS PARSE ERROR",
+          err
+        )
+
+      }
+
+    }
+
+    ws.onerror = (err) => {
+
+      console.log(
+        "WS ERROR",
+        err
+      )
+
+    }
+
+    ws.onclose = () => {
+
+      console.log(
+        "WS CLOSED"
+      )
+
+    }
+
+    return () => {
+
+      ws.close()
+
+    }
+
+  }, [])
+
+  // =====================================================
   // SEARCH
-  // =========================
-  const debouncedSearch = useMemo(
-    () =>
-      debounce(async (value) => {
+  // =====================================================
 
-        if (!value || value.trim().length < 3) {
-          setResults([])
-          return
-        }
+  const debouncedSearch =
+    useMemo(
 
-        setLoading(true)
+      () =>
 
-        try {
-          const data = await searchYouTube(value)
-          setResults(data || [])
-        } catch (err) {
-          console.log(err)
-          setResults([])
-        }
+        debounce(
 
-        setLoading(false)
+          async (value) => {
 
-      }, 700),
-    []
-  )
+            if (
 
-  const handleSearch = (value) => {
+              !value ||
+
+              value.trim().length < 3
+
+            ) {
+
+              setResults([])
+
+              return
+
+            }
+
+            setLoading(true)
+
+            try {
+
+              const data =
+                await searchYouTube(
+                  value
+                )
+
+              setResults(
+                data || []
+              )
+
+            } catch (err) {
+
+              console.log(err)
+
+              setResults([])
+
+            }
+
+            setLoading(false)
+
+          },
+
+          700
+
+        ),
+
+      []
+
+    )
+
+  // =====================================================
+  // SEARCH INPUT
+  // =====================================================
+
+  const handleSearch = (
+    value
+  ) => {
+
     setSearch(value)
+
     debouncedSearch(value)
+
   }
 
+  // =====================================================
+  // CLEANUP SEARCH
+  // =====================================================
+
   useEffect(() => {
-    return () => debouncedSearch.cancel()
+
+    return () => {
+
+      debouncedSearch.cancel()
+
+    }
+
   }, [debouncedSearch])
 
-  // =========================
-  // 🔥 STORE TURN SYSTEM (REAL)
-  // =========================
-  const mySongs = queue.filter(s => s.ownerId === deviceId)
+  // =====================================================
+  // ACTIVE QUEUE
+  // =====================================================
 
-  const myQueueIndex = useMemo(() => {
-    if (!currentSong) return -1
-    return mySongs.findIndex(s => s.id === currentSong.id)
-  }, [currentSong, mySongs])
+  const activeQueue =
+    useMemo(() => {
 
-  const isMyTurn = myQueueIndex !== -1
-  const turnsLeft = myQueueIndex
+      return queue.filter(
+
+        song =>
+
+          song.status ===
+            "queued" ||
+
+          song.status ===
+            "playing"
+
+      )
+
+    }, [queue])
+
+  // =====================================================
+  // MY SONGS
+  // =====================================================
+
+  const mySongs =
+    useMemo(() => {
+
+      return activeQueue.filter(
+
+        song =>
+
+          song.ownerId ===
+          deviceId
+
+      )
+
+    }, [
+
+      activeQueue,
+      deviceId
+
+    ])
+
+  // =====================================================
+  // MY CURRENT SONG
+  // =====================================================
+
+  const myCurrentSong =
+    useMemo(() => {
+
+      return mySongs[0] || null
+
+    }, [mySongs])
+
+  // =====================================================
+  // POSITION IN QUEUE
+  // =====================================================
+
+  const myQueueIndex =
+    useMemo(() => {
+
+      if (!myCurrentSong)
+        return -1
+
+      return activeQueue.findIndex(
+
+        song =>
+
+          song.id ===
+          myCurrentSong.id
+
+      )
+
+    }, [
+
+      activeQueue,
+      myCurrentSong
+
+    ])
+
+  // =====================================================
+  // TURN SYSTEM
+  // =====================================================
+
+  const turnsLeft =
+
+    myQueueIndex <= 0
+      ? 0
+      : myQueueIndex
+
+  const isMyTurn =
+    myQueueIndex !== -1
 
   const isMySongPlaying =
-    isMyTurn &&
-    currentSong?.id === mySongs[myQueueIndex]?.id
 
-  // =========================
-  // ALERT SYSTEM (STABLE)
-  // =========================
+    currentSong?.id ===
+    myCurrentSong?.id
+
+  // =====================================================
+  // ALERT SYSTEM
+  // =====================================================
+
   useEffect(() => {
 
-    if (!currentSong) {
+    // =========================================
+    // NO SONG
+    // =========================================
+
+    if (!myCurrentSong) {
+
       alertOpen.current = null
-      if (Swal.isVisible()) Swal.close()
+
+      if (Swal.isVisible()) {
+
+        Swal.close()
+
+      }
+
+      return
+
+    }
+
+    // =========================================
+    // UNIQUE ALERT KEY
+    // =========================================
+
+    const uniqueKey =
+
+      `${currentSong?.id}-${myCurrentSong?.id}`
+
+    if (
+
+      alertOpen.current ===
+      uniqueKey
+
+    ) {
       return
     }
 
-    if (alertOpen.current === currentSong.id) return
-    alertOpen.current = currentSong.id
+    alertOpen.current =
+      uniqueKey
 
-    // =========================
-    // 1. MY SONG PLAYING
-    // =========================
+    // =========================================
+    // MY SONG PLAYING
+    // =========================================
+
     if (isMySongPlaying) {
 
       Swal.fire({
-        title: "Disfruta tu canción 🎤",
+
+        title:
+          "Tu canción está sonando",
+
         html: `
-          <div style="font-size:16px;text-align:center">
-            <b style="font-size:18px">${currentSong.title}</b><br/>
-            <span style="color:#22d3ee">Estás en pantalla ahora</span>
-          </div>
-        `,
-        background: "#000",
-        color: "#06b6d4",
-        showConfirmButton: false,
-        allowOutsideClick: false,
-        allowEscapeKey: false
-      })
 
-      return
-    }
+          <div style="text-align:center">
 
-    // =========================
-    // 2. NOT YOUR TURN
-    // =========================
-    if (!isMyTurn) {
+            <b style="font-size:18px">
 
-      Swal.fire({
-        title: "Tu canción está en cola",
-        html: `
-          <div style="font-size:16px;text-align:center">
-            <b>${currentSong.title}</b><br/>
-            <span style="color:#9ca3af">
-              Te faltan ${Math.max(turnsLeft, 0)} turnos
+              ${myCurrentSong.title}
+
+            </b>
+
+            <br/>
+
+            <span style="color:#22d3ee">
+
+              Ya estás en pantalla
+
             </span>
+
           </div>
+
         `,
+
         background: "#000",
+
         color: "#06b6d4",
+
         showConfirmButton: false,
+
         allowOutsideClick: false,
+
         allowEscapeKey: false
+
       })
 
       return
+
     }
 
-    // =========================
-    // 3. YOUR TURN READY
-    // =========================
+    // =========================================
+    // WAITING ALERT
+    // =========================================
+
     Swal.fire({
-      title: "Tu turno está activo 🎤",
+
+      title:
+        "Tu canción está en cola",
+
       html: `
-        <div style="font-size:16px;text-align:center">
-          <b style="font-size:18px">${currentSong.title}</b><br/>
-          <span style="color:#22d3ee">Puedes prepararte</span>
+
+        <div style="text-align:center">
+
+          <b>
+
+            ${myCurrentSong.title}
+
+          </b>
+
+          <br/>
+
+          <span style="color:#9ca3af">
+
+            ${
+
+              turnsLeft === 0
+
+                ? "Prepárate"
+
+                : `Faltan ${turnsLeft} turnos`
+
+            }
+
+          </span>
+
         </div>
+
       `,
+
       background: "#000",
+
       color: "#06b6d4",
-      showDenyButton: true,
-      denyButtonText: "Editar canción",
+
+      showDenyButton:
+        turnsLeft <= 1,
+
+      denyButtonText:
+        "Editar canción",
+
       showConfirmButton: false,
+
       allowOutsideClick: false,
+
       allowEscapeKey: false
+
     }).then(res => {
 
       if (res.isDenied) {
+
         setEditMode(true)
-        setEditSongData(currentSong)
+
+        setEditSongData(
+          myCurrentSong
+        )
+
         setSearch("")
+
         setResults([])
-        alertOpen.current = null
+
+        alertOpen.current =
+          null
+
       }
+
     })
 
-  }, [currentSong, queue])
+  }, [
 
-  // =========================
-  // ADD SONG (STORE SAFE)
-  // =========================
-  const handleAddSong = (song) => {
+    currentSong,
+    myCurrentSong,
+    turnsLeft,
+    isMySongPlaying
 
-    if (mySongs.length > 0) {
+  ])
+
+  // =====================================================
+  // ADD SONG
+  // =====================================================
+
+  const handleAddSong =
+    async (song) => {
+
+      // =====================================
+      // ONLY 1 SONG PER USER
+      // =====================================
+
+      if (mySongs.length > 0) {
+
+        Swal.fire({
+
+          icon: "warning",
+
+          title:
+            "Ya tienes una canción en cola",
+
+          toast: true,
+
+          timer: 2000,
+
+          position: "top-end",
+
+          showConfirmButton: false
+
+        })
+
+        return
+
+      }
+
+      // =====================================
+      // ADD
+      // =====================================
+
+      const res =
+        await addSong({
+
+          title:
+            song.title,
+
+          artist:
+            song.artist,
+
+          youtubeId:
+            song.youtubeId,
+
+        })
+
+      // =====================================
+      // ERROR
+      // =====================================
+
+      if (!res?.ok) {
+
+        Swal.fire({
+
+          icon: "error",
+
+          title:
+            res?.error ||
+
+            "No se pudo agregar",
+
+          toast: true,
+
+          timer: 2000,
+
+          position: "top-end",
+
+          showConfirmButton: false
+
+        })
+
+        return
+
+      }
+
+      // =====================================
+      // SUCCESS
+      // =====================================
 
       Swal.fire({
-        icon: "warning",
-        title: "Ya tienes una canción en cola",
+
+        icon: "success",
+
+        title:
+          "Canción agregada",
+
         toast: true,
-        timer: 2000,
-        position: "top-end"
+
+        timer: 1500,
+
+        position: "top-end",
+
+        showConfirmButton: false
+
       })
 
-      return
+      setSearch("")
+
+      setResults([])
+
     }
 
-    addSong({
-      title: song.title,
-      artist: song.artist,
-      youtubeId: song.youtubeId,
-    })
-  }
+  // =====================================================
+  // EDIT SONG
+  // =====================================================
 
-  // =========================
-  // REPLACE SONG (EDIT SAFE)
-  // =========================
-  const handleReplaceSong = (song) => {
+  const handleReplaceSong =
+    async (song) => {
 
-    if (!editSongData) return
+      if (!editSongData)
+        return
 
-    editSong(editSongData.id, {
-      title: song.title,
-      artist: song.artist,
-      youtubeId: song.youtubeId
-    })
+      const res =
+        await editSong(
 
-    setEditMode(false)
-    setEditSongData(null)
+          editSongData.id,
 
-    setSearch("")
-    setResults([])
+          {
 
-    Swal.fire({
-      icon: "success",
-      title: "Canción actualizada",
-      toast: true,
-      timer: 1500,
-      position: "top-end",
-      showConfirmButton: false
-    })
-  }
+            title:
+              song.title,
+
+            artist:
+              song.artist,
+
+            youtubeId:
+              song.youtubeId
+
+          }
+
+        )
+
+      if (!res?.ok) {
+
+        Swal.fire({
+
+          icon: "error",
+
+          title:
+            "No se pudo actualizar",
+
+          toast: true,
+
+          timer: 2000,
+
+          position: "top-end",
+
+          showConfirmButton: false
+
+        })
+
+        return
+
+      }
+
+      setEditMode(false)
+
+      setEditSongData(null)
+
+      setSearch("")
+
+      setResults([])
+
+      Swal.fire({
+
+        icon: "success",
+
+        title:
+          "Canción actualizada",
+
+        toast: true,
+
+        timer: 1500,
+
+        position: "top-end",
+
+        showConfirmButton: false
+
+      })
+
+    }
+
+  // =====================================================
+  // RENDER
+  // =====================================================
 
   return (
-    <div className="min-h-screen text-white flex flex-col">
 
-      {/* HEADER */}
-      <div className="p-5 glass border-b border-white/10">
+    <div className="min-h-screen text-white flex flex-col bg-black">
 
-        <h1 className="text-3xl font-bold text-cyan-400 glow-cyan">
+      {/* =========================================
+          HEADER
+      ========================================= */}
+
+      <div
+        className="
+          p-5
+          glass
+          border-b
+          border-white/10
+        "
+      >
+
+        <h1
+          className="
+            text-3xl
+            font-black
+            text-cyan-400
+            glow-cyan
+          "
+        >
           MKaraoke
         </h1>
 
-        <p className="text-zinc-400">
+        <p
+          className="
+            text-zinc-400
+            mt-1
+          "
+        >
           Busca tu canción en YouTube
         </p>
 
       </div>
 
-      {/* EDIT MODE */}
-      {editMode && (
-        <div className="p-3 border-b border-white/10 glass">
+      {/* =========================================
+          SEARCH
+      ========================================= */}
 
-          <input
-            className="w-full p-2 rounded-lg bg-zinc-900 text-sm outline-none"
-            placeholder="Buscar reemplazo..."
-            value={search}
-            onChange={(e) => handleSearch(e.target.value)}
-          />
+      <div className="p-5">
+
+        <input
+
+          className="
+            w-full
+            p-4
+            rounded-2xl
+            glass
+            border
+            border-white/10
+            outline-none
+          "
+
+          placeholder={
+
+            editMode
+              ? "Buscar reemplazo..."
+              : "Buscar en YouTube..."
+
+          }
+
+          value={search}
+
+          onChange={(e) =>
+
+            handleSearch(
+              e.target.value
+            )
+
+          }
+
+        />
+
+      </div>
+
+      {/* =========================================
+          MY STATUS
+      ========================================= */}
+
+      {myCurrentSong && (
+
+        <div className="px-5 pb-3">
+
+          <div
+            className="
+              bg-cyan-500/10
+              border
+              border-cyan-400/20
+              rounded-2xl
+              p-4
+            "
+          >
+
+            <p
+              className="
+                text-cyan-300
+                text-sm
+                mb-1
+              "
+            >
+              Tu canción
+            </p>
+
+            <h2
+              className="
+                font-bold
+                text-lg
+                truncate
+              "
+            >
+              {myCurrentSong.title}
+            </h2>
+
+            <p
+              className="
+                text-zinc-400
+                text-sm
+                truncate
+              "
+            >
+              {myCurrentSong.artist}
+            </p>
+
+            <div className="mt-3">
+
+              {isMySongPlaying ? (
+
+                <span
+                  className="
+                    text-green-400
+                    text-sm
+                    font-bold
+                  "
+                >
+                  SONANDO AHORA
+                </span>
+
+              ) : (
+
+                <span
+                  className="
+                    text-cyan-300
+                    text-sm
+                    font-bold
+                  "
+                >
+                  Faltan {turnsLeft} turnos
+                </span>
+
+              )}
+
+            </div>
+
+          </div>
 
         </div>
+
       )}
 
-      {/* SEARCH */}
-      {!editMode && (
-        <div className="p-5">
+      {/* =========================================
+          RESULTS
+      ========================================= */}
 
-          <input
-            className="w-full p-3 rounded-xl glass border border-white/10 outline-none"
-            placeholder="Buscar en YouTube..."
-            value={search}
-            onChange={(e) => handleSearch(e.target.value)}
-          />
-
-        </div>
-      )}
-
-      {/* RESULTS */}
-      <div className="flex-1 p-5 space-y-4 overflow-y-auto">
+      <div
+        className="
+          flex-1
+          p-5
+          space-y-4
+          overflow-y-auto
+        "
+      >
 
         {loading && (
+
           <p className="text-zinc-500">
-            Buscando en YouTube...
+
+            Buscando...
+
           </p>
+
         )}
 
         {results.map(song => (
 
           <div
+
             key={song.youtubeId}
-            className="glass tap glow-cyan p-3 rounded-2xl flex gap-4 items-center"
+
+            className="
+              glass
+              tap
+              glow-cyan
+              p-3
+              rounded-2xl
+              flex
+              gap-4
+              items-center
+            "
           >
 
-            <div className="w-20 h-20 rounded-xl overflow-hidden bg-black border border-white/10 shrink-0">
+            {/* THUMB */}
+
+            <div
+              className="
+                w-20
+                h-20
+                rounded-xl
+                overflow-hidden
+                bg-black
+                border
+                border-white/10
+                shrink-0
+              "
+            >
 
               <img
+
                 src={`https://img.youtube.com/vi/${song.youtubeId}/hqdefault.jpg`}
-                className="w-full h-full object-cover"
+
+                className="
+                  w-full
+                  h-full
+                  object-cover
+                "
+
               />
 
             </div>
 
+            {/* INFO */}
+
             <div className="flex-1 min-w-0">
 
-              <p className="font-bold truncate">
+              <p
+                className="
+                  font-bold
+                  truncate
+                "
+              >
                 {song.title}
               </p>
 
-              <p className="text-zinc-400 text-sm truncate">
+              <p
+                className="
+                  text-zinc-400
+                  text-sm
+                  truncate
+                "
+              >
                 {song.artist}
               </p>
 
-              <p className="text-cyan-400/60 text-xs mt-1">
-                🎤 disponible
+              <p
+                className="
+                  text-cyan-400/60
+                  text-xs
+                  mt-1
+                "
+              >
+                Disponible
               </p>
 
             </div>
 
+            {/* BUTTON */}
+
             <button
+
               onClick={() =>
+
                 editMode
+
                   ? handleReplaceSong(song)
+
                   : handleAddSong(song)
+
               }
-              className="tap bg-cyan-500 text-black px-4 py-2 rounded-xl font-bold"
+
+              className="
+                tap
+                bg-cyan-500
+                text-black
+                px-4
+                py-2
+                rounded-xl
+                font-bold
+              "
             >
-              +
+
+              {editMode
+                ? "✓"
+                : "+"}
+
             </button>
 
           </div>
@@ -327,13 +1020,31 @@ function MobilePage() {
 
       </div>
 
-      {/* FOOTER */}
-      <div className="p-4 border-t border-white/10 glass text-center text-zinc-400">
-        Cola global: {queue.length}
+      {/* =========================================
+          FOOTER
+      ========================================= */}
+
+      <div
+        className="
+          p-4
+          border-t
+          border-white/10
+          glass
+          text-center
+          text-zinc-400
+        "
+      >
+
+        Cola global:
+        {" "}
+        {activeQueue.length}
+
       </div>
 
     </div>
+
   )
+
 }
 
 export default MobilePage
