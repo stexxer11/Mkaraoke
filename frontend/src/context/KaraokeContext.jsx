@@ -14,6 +14,9 @@ import {
   nextSongApi,
   playNowApi,
   removeSongApi,
+  repeatSongApi,
+  reorderQueueApi,
+  restartSongApi,
 } from "../services/karaokeApi"
 
 const KaraokeContext = createContext()
@@ -248,9 +251,12 @@ export function KaraokeProvider({ children }) {
       hasActiveSong,
 
       // ACTIONS
-      addSong,
-      editSong,
-      cancelSong,
+      // ADMIN ACTIONS
+      playNow,
+      removeSongById,
+      repeatSong,
+      reorderQueue,
+      restartSong,
 
       // PLAYER ACTIONS
       playNextSong,
@@ -271,3 +277,37 @@ export function KaraokeProvider({ children }) {
 export function useKaraoke() {
   return useContext(KaraokeContext)
 }
+
+const repeatSong = async (song) => {
+  try {
+    return await repeatSongApi(song)
+  } catch (err) {
+    console.log(err)
+    return { ok: false }
+  }
+}
+
+const reorderQueue = async (newQueue) => {
+  try {
+
+    const ids = newQueue
+      .filter(s => s.status === "queued")
+      .map(s => s.id)
+
+    return await reorderQueueApi(ids)
+
+  } catch (err) {
+    console.log(err)
+    return { ok: false }
+  }
+}
+
+const restartSong = async (id) => {
+  try {
+    return await restartSongApi(id)
+  } catch (err) {
+    console.log(err)
+    return { ok: false }
+  }
+}
+
