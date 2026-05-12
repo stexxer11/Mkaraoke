@@ -336,7 +336,9 @@ async def next_song():
 
     return {"ok": True}
 
-
+@app.get("/")
+def root():
+    return {"status": "ok", "service": "mkaraoke"}
 # =====================================================
 # PLAY NOW
 # =====================================================
