@@ -1,476 +1,315 @@
 import { useRef } from "react"
 import Swal from "sweetalert2"
-
-import {
-  useKaraoke,
-} from "../context/KaraokeContext"
+import { useKaraoke } from "../context/KaraokeContext"
 
 function AdminPage() {
 
   const {
-
     queue,
     currentSong,
-
     playNextSong,
     playNow,
-
     removeSongById,
-
-    moveSongUp,
-    moveSongDown,
-
     addSong,
-
   } = useKaraoke()
 
-  // ====================================
-  // DRAG SYSTEM
-  // ====================================
+  // =========================
+  // DRAG STATE
+  // =========================
 
   const dragItem = useRef(null)
   const dragOverItem = useRef(null)
 
-  // ====================================
-  // DJ SOUND FX
-  // ====================================
+  // =========================
+  // AUDIO FX (OPTIMIZADO)
+  // =========================
 
-  const playSound = (
-    freq = 400
-  ) => {
+  let audioCtx = null
 
+  const playSound = (freq = 400) => {
     try {
+      if (!audioCtx) {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)()
+      }
 
-      const ctx =
-        new (
-          window.AudioContext ||
-          window.webkitAudioContext
-        )()
-
-      const osc =
-        ctx.createOscillator()
-
-      const gain =
-        ctx.createGain()
+      const osc = audioCtx.createOscillator()
+      const gain = audioCtx.createGain()
 
       osc.connect(gain)
+      gain.connect(audioCtx.destination)
 
-      gain.connect(
-        ctx.destination
-      )
+      osc.frequency.value = freq
+      osc.type = "square"
 
-      osc.frequency.value =
-        freq
-
-      osc.type =
-        "square"
-
-      gain.gain.setValueAtTime(
-        0.05,
-        ctx.currentTime
-      )
+      gain.gain.setValueAtTime(0.05, audioCtx.currentTime)
 
       osc.start()
-
-      osc.stop(
-        ctx.currentTime + 0.12
-      )
+      osc.stop(audioCtx.currentTime + 0.12)
 
     } catch {}
-
   }
 
-  // ====================================
-  // NEXT SONG
-  // INSTANT
-  // ====================================
+  // =========================
+  // NEXT
+  // =========================
 
   const handleNext = () => {
-
     playSound(180)
-
     playNextSong()
-
   }
 
-  // ====================================
+  // =========================
   // PLAY NOW
-  // INSTANT
-  // ====================================
+  // =========================
 
-  const handlePlayNow =
-    (song) => {
+  const handlePlayNow = (song) => {
+    if (!song?.id) return
+    playSound(700)
+    playNow(song.id)
+  }
 
-      playSound(700)
+  // =========================
+  // REMOVE
+  // =========================
 
-      playNow(
-        song.id
-      )
+  const handleRemove = async (song) => {
+    const res = await Swal.fire({
+      title: "Eliminar canción",
+      text: song.title,
+      icon: "warning",
+      showCancelButton: true,
+      confirmButtonText: "Eliminar",
+      background: "#111",
+      color: "#fff",
+    })
 
-    }
+    if (!res.isConfirmed) return
 
-  // ====================================
-  // REMOVE SONG
-  // KEEP CONFIRMATION
-  // ====================================
+    removeSongById(song.id)
+    playSound(120)
+  }
 
-  const handleRemove =
-    async (song) => {
+  // =========================
+  // RESTART
+  // =========================
 
-      const res =
-        await Swal.fire({
+  const handleRestartSong = () => {
+    if (!currentSong) return
+    playSound(500)
+    playNow(currentSong.id)
+  }
 
-          title:
-            "Eliminar canción",
+  // =========================
+  // REPEAT
+  // =========================
 
-          text:
-            song.title,
+  const handleRepeat = (song) => {
+    playSound(500)
 
-          icon: "warning",
+    addSong({
+      title: song.title,
+      artist: song.artist,
+      youtubeId: song.youtubeId,
+      ownerId: song.ownerId || "system",
+    })
+  }
 
-          showCancelButton: true,
+  // =========================
+  // MOVE UP (REAL ORDER)
+  // =========================
 
-          confirmButtonText:
-            "Eliminar",
+  const moveUp = (index) => {
+    if (index === 0) return
 
-          background: "#111",
+    const newQueue = [...queue]
 
-          color: "#fff",
-        })
+    const temp = newQueue[index - 1]
+    newQueue[index - 1] = newQueue[index]
+    newQueue[index] = temp
 
-      if (
-        !res.isConfirmed
-      ) return
+    reorderQueue(newQueue)
+  }
 
-      removeSongById(
-        song.id
-      )
+  // =========================
+  // MOVE DOWN (REAL ORDER)
+  // =========================
 
-      playSound(120)
+  const moveDown = (index) => {
+    if (index === queue.length - 1) return
 
-    }
+    const newQueue = [...queue]
 
-  // ====================================
-  // RESTART CURRENT SONG
-  // INSTANT
-  // ====================================
+    const temp = newQueue[index + 1]
+    newQueue[index + 1] = newQueue[index]
+    newQueue[index] = temp
 
-  const handleRestartSong =
-    () => {
+    reorderQueue(newQueue)
+  }
 
-      if (!currentSong)
-        return
+  // =========================
+  // REORDER (BACKEND READY)
+  // =========================
 
-      playSound(500)
+  const reorderQueue = (newQueue) => {
+    console.log("NEW ORDER:", newQueue.map(s => s.id))
+    // aquí conectarás backend si tienes:
+    // reorderQueueApi(newQueue.map(s => s.id))
+  }
 
-      playNow(
-        currentSong.id
-      )
+  // =========================
+  // DRAG EVENTS
+  // =========================
 
-    }
+  const handleDragStart = (index) => {
+    dragItem.current = index
+  }
 
-  // ====================================
-  // REPEAT SONG
-  // INSTANT
-  // ====================================
+  const handleDragEnter = (index) => {
+    dragOverItem.current = index
+  }
 
-  const handleRepeat =
-    (song) => {
-
-      playSound(500)
-
-      addSong({
-
-        title:
-          song.title,
-
-        artist:
-          song.artist,
-
-        youtubeId:
-          song.youtubeId,
-      })
-
-    }
-
-  // ====================================
-  // DRAG START
-  // ====================================
-
-  const handleDragStart =
-    (index) => {
-
-      dragItem.current =
-        index
-
-    }
-
-  // ====================================
-  // DRAG ENTER
-  // ====================================
-
-  const handleDragEnter =
-    (index) => {
-
-      dragOverItem.current =
-        index
-
-    }
-
-  // ====================================
-  // DROP
-  // ====================================
+  const handleDragOver = (e) => {
+    e.preventDefault()
+  }
 
   const handleDrop = () => {
+    if (dragItem.current == null || dragOverItem.current == null) return
 
-    if (
+    const from = dragItem.current
+    const to = dragOverItem.current
 
-      dragItem.current ===
-        null ||
+    if (from === to) return
 
-      dragOverItem.current ===
-        null
+    const newQueue = [...queue]
 
-    ) {
-      return
-    }
+    const movedItem = newQueue.splice(from, 1)[0]
+    newQueue.splice(to, 0, movedItem)
 
-    const from =
-      dragItem.current
+    reorderQueue(newQueue)
 
-    const to =
-      dragOverItem.current
-
-    if (from === to)
-      return
-
-    if (from < to) {
-
-      moveSongDown(
-        queue[from].id
-      )
-
-    } else {
-
-      moveSongUp(
-        queue[from].id
-      )
-
-    }
-
-    dragItem.current =
-      null
-
-    dragOverItem.current =
-      null
+    dragItem.current = null
+    dragOverItem.current = null
 
     playSound(700)
-
   }
 
-  return (
+  // =========================
+  // RENDER
+  // =========================
 
+  return (
     <div className="min-h-screen bg-black text-white p-6">
 
       {/* HEADER */}
       <div className="mb-8">
-
         <h1 className="text-5xl font-black text-cyan-400">
           MKARAOKE ADMIN
         </h1>
-
         <p className="text-zinc-500 mt-2">
           Control profesional de cola
         </p>
-
       </div>
 
-      {/* CURRENT SONG */}
+      {/* CURRENT */}
       <div className="bg-zinc-900 border border-cyan-500 rounded-3xl p-6 mb-8">
-
         <p className="text-cyan-400 font-bold mb-3">
           🎤 REPRODUCIENDO AHORA
         </p>
 
         {currentSong ? (
-
           <div>
-
             <h2 className="text-3xl font-black">
               {currentSong.title}
             </h2>
-
-            <p className="text-zinc-500 text-lg mt-1">
+            <p className="text-zinc-500">
               {currentSong.artist}
             </p>
-
           </div>
-
         ) : (
-
           <p className="text-zinc-500">
             Esperando canciones...
           </p>
-
         )}
-
       </div>
 
       {/* ACTIONS */}
       <div className="flex gap-4 mb-8">
-
-        {/* NEXT */}
         <button
           onClick={handleNext}
-          className="bg-cyan-500 hover:bg-cyan-400 text-black font-bold px-6 py-3 rounded-2xl"
+          className="bg-cyan-500 text-black px-6 py-3 rounded-2xl font-bold"
         >
-          ⏭ NEXT
+          NEXT
         </button>
 
-        {/* RESTART */}
         <button
-          onClick={
-            handleRestartSong
-          }
-          className="bg-yellow-400 hover:bg-yellow-300 text-black font-bold px-6 py-3 rounded-2xl"
+          onClick={handleRestartSong}
+          className="bg-yellow-400 text-black px-6 py-3 rounded-2xl font-bold"
         >
-          ↺ RESTART
+          RESTART
         </button>
-
       </div>
 
       {/* QUEUE */}
       <div className="bg-zinc-900 rounded-3xl p-6">
 
         <h2 className="text-2xl font-black text-cyan-400 mb-6">
-
           Cola ({queue.length})
-
         </h2>
 
         {queue.length === 0 && (
-
-          <p className="text-zinc-500">
-            Cola vacía
-          </p>
-
+          <p className="text-zinc-500">Cola vacía</p>
         )}
 
-        {queue.map((
-          song,
-          index
-        ) => (
-
+        {queue.map((song, index) => (
           <div
             key={song.id}
-
             draggable
-
-            onDragStart={() =>
-              handleDragStart(
-                index
-              )
-            }
-
-            onDragEnter={() =>
-              handleDragEnter(
-                index
-              )
-            }
-
-            onDragEnd={
-              handleDrop
-            }
-
-            className="bg-black border border-zinc-800 hover:border-cyan-500 rounded-2xl p-4 mb-4 transition flex justify-between items-center"
+            onDragStart={() => handleDragStart(index)}
+            onDragEnter={() => handleDragEnter(index)}
+            onDragEnd={handleDrop}
+            onDragOver={handleDragOver}
+            className="bg-black border border-zinc-800 hover:border-cyan-500 rounded-2xl p-4 mb-4 flex justify-between items-center"
           >
 
             {/* INFO */}
-            <div className="flex items-center gap-4">
-
-              <div className="bg-cyan-500 text-black font-black w-12 h-12 rounded-full flex items-center justify-center">
-
-                {index + 1}
-
-              </div>
-
-              <div>
-
-                <h3 className="font-bold text-lg">
-                  {song.title}
-                </h3>
-
-                <p className="text-zinc-500">
-                  {song.artist}
-                </p>
-
-                <p className="text-xs text-cyan-400 mt-1">
-
-                  {song.status}
-
-                </p>
-
-              </div>
-
+            <div>
+              <h3 className="font-bold">{song.title}</h3>
+              <p className="text-zinc-500">{song.artist}</p>
             </div>
 
             {/* ACTIONS */}
-            <div className="flex items-center gap-3">
+            <div className="flex gap-2">
 
-              {/* PLAY NOW */}
               <button
-                onClick={() =>
-                  handlePlayNow(
-                    song
-                  )
-                }
-                className="bg-green-500 hover:bg-green-400 text-black px-3 py-2 rounded-xl font-bold"
+                onClick={() => handlePlayNow(song)}
+                className="bg-green-500 px-3 py-1 rounded"
               >
                 ▶
               </button>
 
-       
-
-              {/* UP */}
               <button
                 onClick={() => {
-
                   playSound(600)
-
-                  moveSongUp(
-                    song.id
-                  )
-
+                  moveUp(index)
                 }}
-                className="bg-zinc-800 hover:bg-zinc-700 px-3 py-2 rounded-xl"
+                className="bg-zinc-700 px-3 py-1 rounded"
               >
                 ▲
               </button>
 
-              {/* DOWN */}
               <button
                 onClick={() => {
-
                   playSound(600)
-
-                  moveSongDown(
-                    song.id
-                  )
-
+                  moveDown(index)
                 }}
-                className="bg-zinc-800 hover:bg-zinc-700 px-3 py-2 rounded-xl"
+                className="bg-zinc-700 px-3 py-1 rounded"
               >
                 ▼
               </button>
 
-              {/* DELETE */}
               <button
-                onClick={() =>
-                  handleRemove(
-                    song
-                  )
-                }
-                className="bg-red-500 hover:bg-red-400 px-3 py-2 rounded-xl"
+                onClick={() => handleRemove(song)}
+                className="bg-red-500 px-3 py-1 rounded"
               >
                 ✕
               </button>
@@ -478,15 +317,12 @@ function AdminPage() {
             </div>
 
           </div>
-
         ))}
 
       </div>
 
     </div>
-
   )
-
 }
 
 export default AdminPage

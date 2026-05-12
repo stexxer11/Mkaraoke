@@ -8,569 +8,272 @@ import {
 } from "react"
 
 import {
-
   addSongApi,
   editSongApi,
   cancelSongApi,
-
   nextSongApi,
   playNowApi,
   removeSongApi,
-
 } from "../services/karaokeApi"
 
-const KaraokeContext =
-  createContext()
+const KaraokeContext = createContext()
 
-export function KaraokeProvider({
-  children
-}) {
+export function KaraokeProvider({ children }) {
 
   // =====================================================
-  // DEVICE ID (REAL MULTIUSER)
+  // DEVICE ID
   // =====================================================
 
-  const [deviceId] =
-    useState(() => {
+  const [deviceId] = useState(() => {
 
-      const existingId =
-        localStorage.getItem(
-          "mk_device_id"
-        )
+    const saved = localStorage.getItem("mk_device_id")
 
-      if (existingId) {
+    if (saved) return saved
 
-        return existingId
+    const id = crypto.randomUUID()
 
-      }
+    localStorage.setItem("mk_device_id", id)
 
-      const newId =
-        crypto.randomUUID()
-
-      localStorage.setItem(
-        "mk_device_id",
-        newId
-      )
-
-      return newId
-
-    })
+    return id
+  })
 
   // =====================================================
-  // QUEUE
+  // STATE (SOURCE OF TRUTH = BACKEND)
   // =====================================================
 
-  const [queue, setQueue] =
-    useState([])
+  const [queue, setQueue] = useState([])
+  const [currentSong, setCurrentSong] = useState(null)
 
-  // =====================================================
-  // PLAYER VERSION
-  // =====================================================
+  const [playerVersion, setPlayerVersion] = useState(0)
 
-  const [playerVersion, setPlayerVersion] =
-    useState(0)
+  const socketRef = useRef(null)
 
   // =====================================================
   // WEBSOCKET
   // =====================================================
 
-  const socketRef =
-    useRef(null)
-
-  // =====================================================
-  // CONNECT SOCKET
-  // =====================================================
-
   useEffect(() => {
 
-    const ws =
-      new WebSocket(
-
-        `${import.meta.env.VITE_WS_URL.replace(
-          "https",
-          "wss"
-        )}/ws`
-
-      )
+    const ws = new WebSocket(
+      `${import.meta.env.VITE_WS_URL.replace("https", "wss")}/ws`
+    )
 
     socketRef.current = ws
 
-    // =========================================
-    // OPEN
-    // =========================================
-
     ws.onopen = () => {
-
-      console.log(
-        "WS CONNECTED"
-      )
-
-      console.log(
-        "DEVICE ID:",
-        deviceId
-      )
-
+      console.log("WS CONNECTED", deviceId)
     }
 
-    // =========================================
-    // MESSAGE
-    // =========================================
-
-    ws.onmessage = (
-      event
-    ) => {
+    ws.onmessage = (event) => {
 
       try {
 
-        const data =
-          JSON.parse(
-            event.data
-          )
+        const data = JSON.parse(event.data)
 
-        // =====================================
+        // =================================================
         // QUEUE UPDATE
-        // =====================================
+        // =================================================
 
-        if (
-          data.type ===
-          "queue_update"
-        ) {
-
-          console.log(
-            "QUEUE UPDATE:",
-            data.queue
-          )
-
-          setQueue(
-            data.queue || []
-          )
-
+        if (data.type === "queue_update") {
+          setQueue(data.queue || [])
         }
 
-        // =====================================
-        // PLAYER EVENTS
-        // =====================================
+        // =================================================
+        // LOAD VIDEO (SOURCE OF TRUTH)
+        // =================================================
 
-        if (
+        if (data.type === "LOAD_VIDEO") {
 
-          data.type ===
-            "LOAD_VIDEO" ||
+          setCurrentSong(data.song)
 
-          data.type ===
-            "STOP_VIDEO"
+          setPlayerVersion(prev => prev + 1)
+        }
 
-        ) {
+        // =================================================
+        // STOP VIDEO
+        // =================================================
 
-          setPlayerVersion(
-            prev => prev + 1
-          )
+        if (data.type === "STOP_VIDEO") {
 
+          setCurrentSong(null)
+
+          setPlayerVersion(prev => prev + 1)
         }
 
       } catch (err) {
-
-        console.log(
-          "WS PARSE ERROR",
-          err
-        )
-
+        console.log("WS ERROR PARSE", err)
       }
-
     }
 
-    // =========================================
-    // ERROR
-    // =========================================
-
-    ws.onerror = (
-      err
-    ) => {
-
-      console.log(
-        "WS ERROR",
-        err
-      )
-
+    ws.onerror = (err) => {
+      console.log("WS ERROR", err)
     }
-
-    // =========================================
-    // CLOSE
-    // =========================================
 
     ws.onclose = () => {
-
-      console.log(
-        "WS CLOSED"
-      )
-
+      console.log("WS CLOSED")
     }
 
-    // =========================================
-    // CLEANUP
-    // =========================================
-
-    return () => {
-
-      ws.close()
-
-    }
+    return () => ws.close()
 
   }, [deviceId])
-
-  // =====================================================
-  // CURRENT SONG
-  // =====================================================
-
-  const currentSong =
-    useMemo(() => {
-
-      return queue.find(
-
-        song =>
-          song.status ===
-          "playing"
-
-      ) || null
-
-    }, [queue])
 
   // =====================================================
   // ACTIVE QUEUE
   // =====================================================
 
-  const activeQueue =
-    useMemo(() => {
-
-      return queue.filter(
-
-        song =>
-
-          song.status ===
-            "queued" ||
-
-          song.status ===
-            "playing"
-
-      )
-
-    }, [queue])
+  const activeQueue = useMemo(() => {
+    return queue.filter(
+      song =>
+        song.status === "queued" ||
+        song.status === "playing"
+    )
+  }, [queue])
 
   // =====================================================
-  // MY SONGS
+  // MY SONGS (MULTIUSER SAFE)
   // =====================================================
 
-  const mySongs =
-    useMemo(() => {
+  const mySongs = useMemo(() => {
 
-      return activeQueue.filter(
+    return activeQueue.filter(song =>
+      String(song.ownerId) === String(deviceId)
+    )
 
-        song =>
+  }, [activeQueue, deviceId])
 
-          String(
-            song.ownerId
-          ) ===
-          String(deviceId)
-
-      )
-
-    }, [
-
-      activeQueue,
-      deviceId
-
-    ])
-
-  // =====================================================
-  // HAS ACTIVE SONG
-  // =====================================================
-
-  const hasActiveSong =
-    mySongs.length > 0
+  const hasActiveSong = mySongs.length > 0
 
   // =====================================================
   // ADD SONG
   // =====================================================
 
-  const addSong = async (
-    songData
-  ) => {
+  const addSong = async (songData) => {
 
     try {
 
-      console.log(
-        "ADDING SONG WITH DEVICE:",
-        deviceId
-      )
-
-      return await addSongApi({
-
-        ownerId:
-          deviceId,
-
-        title:
-          songData.title,
-
-        artist:
-          songData.artist,
-
-        youtubeId:
-          songData.youtubeId,
-
+      const res = await addSongApi({
+        ownerId: deviceId,
+        title: songData.title,
+        artist: songData.artist,
+        youtubeId: songData.youtubeId,
       })
+
+      return res
 
     } catch (err) {
 
       console.log(err)
 
       return {
-
         ok: false,
-
-        error:
-
-          err?.response?.data
-            ?.detail ||
-
-          "Error agregando canción"
-
+        error: "ADD_SONG_ERROR"
       }
-
     }
-
   }
 
   // =====================================================
   // EDIT SONG
   // =====================================================
 
-  const editSong = async (
-    songId,
-    data
-  ) => {
+  const editSong = async (id, data) => {
 
     try {
-
-      return await editSongApi(
-        songId,
-        data
-      )
-
+      return await editSongApi(id, data)
     } catch (err) {
-
-      console.log(err)
-
-      return {
-        ok: false
-      }
-
+      return { ok: false }
     }
-
   }
 
   // =====================================================
   // CANCEL SONG
   // =====================================================
 
-  const cancelSong =
-    async (songId) => {
+  const cancelSong = async (id) => {
 
-      try {
-
-        return await cancelSongApi(
-          songId
-        )
-
-      } catch (err) {
-
-        console.log(err)
-
-        return {
-          ok: false
-        }
-
-      }
-
+    try {
+      return await cancelSongApi(id)
+    } catch (err) {
+      return { ok: false }
     }
+  }
 
   // =====================================================
   // NEXT SONG
   // =====================================================
 
-  const playNextSong =
-    async () => {
+  const playNextSong = async () => {
 
-      try {
-
-        await nextSongApi()
-
-      } catch (err) {
-
-        console.log(err)
-
-      }
-
+    try {
+      return await nextSongApi()
+    } catch (err) {
+      console.log(err)
     }
+  }
 
   // =====================================================
   // PLAY NOW
   // =====================================================
 
-  const playNow = async (
-    songId
-  ) => {
+  const playNow = async (id) => {
 
     try {
-
-      return await playNowApi(
-        songId
-      )
-
+      return await playNowApi(id)
     } catch (err) {
-
-      console.log(err)
-
-      return {
-        ok: false
-      }
-
+      return { ok: false }
     }
-
   }
 
   // =====================================================
   // REMOVE SONG
   // =====================================================
 
-  const removeSongById =
-    async (songId) => {
+  const removeSongById = async (id) => {
 
-      try {
-
-        await removeSongApi(
-          songId
-        )
-
-      } catch (err) {
-
-        console.log(err)
-
-      }
-
+    try {
+      return await removeSongApi(id)
+    } catch (err) {
+      console.log(err)
     }
-
-  // =====================================================
-  // MOVE SONG UP
-  // =====================================================
-
-  const moveSongUp =
-    () => {}
-
-  // =====================================================
-  // MOVE SONG DOWN
-  // =====================================================
-
-  const moveSongDown =
-    () => {}
-
-  // =====================================================
-  // REORDER QUEUE
-  // =====================================================
-
-  const reorderQueue =
-    () => {}
-
-  // =====================================================
-  // VISIBLE QUEUE
-  // =====================================================
-
-  const visibleQueue =
-    useMemo(() => {
-
-      return queue.filter(
-
-        song =>
-
-          song.status !==
-            "done" &&
-
-          song.status !==
-            "cancelled"
-
-      )
-
-    }, [queue])
+  }
 
   // =====================================================
   // PROVIDER
   // =====================================================
 
   return (
+    <KaraokeContext.Provider value={{
 
-    <KaraokeContext.Provider
-      value={{
+      // STATE
+      queue,
+      activeQueue,
+      currentSong,
 
-        // =====================================
-        // STATE
-        // =====================================
+      // PLAYER
+      playerVersion,
 
-        queue,
-        visibleQueue,
-        activeQueue,
-        currentSong,
+      // USER
+      deviceId,
+      mySongs,
+      hasActiveSong,
 
-        // =====================================
-        // PLAYER
-        // =====================================
+      // ACTIONS
+      addSong,
+      editSong,
+      cancelSong,
 
-        playerVersion,
+      // PLAYER ACTIONS
+      playNextSong,
 
-        // =====================================
-        // USER
-        // =====================================
+      // ADMIN
+      playNow,
+      removeSongById,
 
-        deviceId,
-        mySongs,
-        hasActiveSong,
-
-        // =====================================
-        // USER ACTIONS
-        // =====================================
-
-        addSong,
-        editSong,
-        cancelSong,
-
-        // =====================================
-        // PLAYER ACTIONS
-        // =====================================
-
-        playNextSong,
-
-        // =====================================
-        // ADMIN
-        // =====================================
-
-        playNow,
-        removeSongById,
-        moveSongUp,
-        moveSongDown,
-        reorderQueue,
-
-      }}
-    >
-
+    }}>
       {children}
-
     </KaraokeContext.Provider>
-
   )
-
 }
 
 export function useKaraoke() {
-
-  return useContext(
-    KaraokeContext
-  )
-
+  return useContext(KaraokeContext)
 }

@@ -1,30 +1,25 @@
-from sqlalchemy import Column
-from sqlalchemy import Integer
-from sqlalchemy import String
-from sqlalchemy import DateTime
-
+from sqlalchemy import Column, String, Integer, DateTime
 from datetime import datetime
+import uuid
 
 from database import Base
+
 
 class Song(Base):
 
     __tablename__ = "songs"
 
-    id = Column(Integer, primary_key=True, index=True)
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
 
-    title = Column(String)
-    artist = Column(String)
+    ownerId = Column(String, index=True)
 
-    youtubeId = Column(String)
-
-    ownerId = Column(String)
+    title = Column(String, nullable=False)
+    artist = Column(String, nullable=False)
+    youtubeId = Column(String, nullable=False)
 
     transpose = Column(Integer, default=0)
 
-    status = Column(String, default="queued")
+    status = Column(String, default="queued")  # queued | playing | done | cancelled
 
-    createdAt = Column(
-        DateTime,
-        default=datetime.utcnow
-    )
+    createdAt = Column(DateTime, default=datetime.utcnow)
+    updatedAt = Column(DateTime, default=datetime.utcnow)
