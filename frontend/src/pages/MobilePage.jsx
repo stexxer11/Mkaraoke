@@ -149,87 +149,108 @@ function MobilePage() {
 
   useEffect(() => {
 
-    if (isMySongPlaying && editMode) {
-      setEditMode(false)
-      setEditSongData(null)
+  if (!myActiveSong) {
+    alertOpen.current = null
+    if (Swal.isVisible()) Swal.close()
+    return
+  }
+
+  const activeQueue = queue.filter(
+    s => s.status === "queued" || s.status === "playing"
+  )
+
+  const position = activeQueue.findIndex(
+    s => s.id === myActiveSong.id
+  )
+
+  const turnsLeftValue = position === -1 ? 0 : position
+
+  const alertKey =
+    `${myActiveSong.id}-${turnsLeftValue}-${currentSong?.id}`
+
+  if (alertOpen.current === alertKey) return
+
+  alertOpen.current = alertKey
+
+  if (isMySongPlaying) {
+
+    showAlert({
+      title: "Disfruta tu canción 🎤",
+      html: `<b>${myActiveSong.title}</b>`,
+      background: "#000",
+      color: "#06b6d4",
+      showConfirmButton: false,
+      allowOutsideClick: false,
+      allowEscapeKey: false,
+    })
+
+    return
+  }
+
+  showAlert({
+    title: isMyTurn
+      ? "Tu turno está listo 🎤"
+      : `Te faltan ${turnsLeftValue} turno(s)`,
+
+    html: `
+      <b>${myActiveSong.title}</b>
+      <br/>
+      <span style="opacity:0.7;font-size:13px">
+        ${isMyTurn ? "Prepara tu canción" : "En cola de espera"}
+      </span>
+    `,
+
+    background: "#000",
+    color: "#06b6d4",
+
+    showConfirmButton: false,     // elimina OK
+    allowOutsideClick: false,     // no cerrar tocando fuera
+    allowEscapeKey: false,        // no cerrar con ESC
+
+    showDenyButton: true,
+    denyButtonText: "Editar canción",
+
+    showCancelButton: true,
+    cancelButtonText: "Cancelar turno",
+
+  }).then(res => {
+
+    if (res.isDenied && !isMySongPlaying) {
+      setEditMode(true)
+      setEditSongData(myActiveSong)
       setSearch("")
       setResults([])
     }
 
-  }, [isMySongPlaying, editMode])
-
-  useEffect(() => {
-
-    if (!myActiveSong) {
-      alertOpen.current = null
-      if (Swal.isVisible()) Swal.close()
-      return
-    }
-
-    const alertKey =
-      `${myActiveSong.id}-${turnsLeft}-${currentSong?.id}`
-
-    if (alertOpen.current === alertKey) return
-
-    alertOpen.current = alertKey
-
-    if (isMySongPlaying) {
+    if (res.dismiss === Swal.DismissReason.cancel) {
 
       showAlert({
-        title: "Disfruta tu canción 🎤",
-        html: `<b>${myActiveSong.title}</b>`,
-        background: "#000",
-        color: "#06b6d4",
-        showConfirmButton: false,
-      })
+        title: "Eliminar de la cola",
+        text: "Esta acción eliminará tu canción",
+        icon: "warning",
+        showCancelButton: true,
+        confirmButtonText: "Sí, eliminar",
+        cancelButtonText: "No"
+      }).then(async confirm => {
 
-      return
+        if (confirm.isConfirmed) {
+          await cancelSong(myActiveSong.id)
+        }
+
+      })
     }
 
-    showAlert({
-      title: isMyTurn ? "Tu turno está listo 🎤" : "Tu canción está en cola",
-      html: `<b>${myActiveSong.title}</b>`,
-      background: "#000",
-      color: "#06b6d4",
-      showDenyButton: true,
-      denyButtonText: "Editar canción",
-      showCancelButton: true,
-      cancelButtonText: "Cancelar turno",
-    }).then(res => {
+  })
 
-      if (res.isDenied && !isMySongPlaying) {
-        setEditMode(true)
-        setEditSongData(myActiveSong)
-        setSearch("")
-        setResults([])
-      }
-
-      if (res.dismiss === Swal.DismissReason.cancel) {
-
-        showAlert({
-          title: "¿Cancelar canción?",
-          icon: "warning",
-          showCancelButton: true,
-        }).then(async confirm => {
-
-          if (confirm.isConfirmed) {
-            await cancelSong(myActiveSong.id)
-          }
-
-        })
-      }
-
-    })
-
-  }, [
-    queue,
-    currentSong,
-    myActiveSong,
-    turnsLeft,
-    isMyTurn,
-    isMySongPlaying,
-    deviceId
-  ])
+}, [
+  queue,
+  currentSong,
+  myActiveSong,
+  turnsLeft,
+  isMyTurn,
+  isMySongPlaying,
+  deviceId
+])
 
   const handleAddSong = async (song) => {
 
