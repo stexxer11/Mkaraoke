@@ -80,7 +80,8 @@ function MobilePage() {
       setLoading(true)
 
       try {
-        const data = await searchYouTube(value)
+        const filteredValue = forceKaraokeQuery(value)
+        const data = await searchYouTube(filteredValue)
         setResults(data || [])
       } catch (err) {
         setResults([])

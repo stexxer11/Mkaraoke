@@ -378,7 +378,7 @@ async def play_now(song_id: str):
 # =====================================================
 # REMOVE
 # =====================================================
-
+    
 @app.delete("/queue/remove/{song_id}")
 async def remove_song(song_id: str):
 
