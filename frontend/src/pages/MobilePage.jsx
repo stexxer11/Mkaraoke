@@ -23,7 +23,7 @@ function MobilePage() {
   } = useKaraoke()
 
   // =====================================================
-  // RULE ENGINE (25 REGLAS + FILTRO KARAOKE)
+  // RULE ENGINE
   // =====================================================
 
   const RULES = {
@@ -31,29 +31,6 @@ function MobilePage() {
     MAX_QUEUE_PER_USER: 1,
     MAX_GLOBAL_QUEUE: 50,
     SEARCH_COOLDOWN_MS: 1500,
-  }
-
-  // 🔥 NUEVA REGLA: SOLO KARAOKE
-  const isKaraokeSong = (song) => {
-    const text = `
-      ${song.title || ""}
-      ${song.artist || ""}
-    `.toLowerCase()
-
-    const keywords = [
-      "karaoke",
-      "instrumental",
-      "backing track",
-      "sing along",
-      "lyrics karaoke"
-    ]
-
-    return keywords.some(k => text.includes(k))
-  }
-
-  const filterKaraoke = (items) => {
-    if (!Array.isArray(items)) return []
-    return items.filter(isKaraokeSong)
   }
 
   const isDuplicateSong = (queue, youtubeId, deviceId) =>
@@ -96,7 +73,31 @@ function MobilePage() {
   const [editSongData, setEditSongData] = useState(null)
 
   // =====================================================
-  // SEARCH (CON FILTRO KARAOKE APLICADO)
+  // SEARCH FILTER (KARAOKE ONLY)
+  // =====================================================
+
+  const isKaraokeQuery = (text) => {
+    const keywords = [
+      "karaoke",
+      "instrumental",
+      "lyrics",
+      "letra",
+      "cover",
+      "backing track"
+    ]
+
+    return keywords.some(k =>
+      text.toLowerCase().includes(k)
+    )
+  }
+
+  const forceKaraokeQuery = (text) => {
+    if (isKaraokeQuery(text)) return text
+    return `${text} karaoke instrumental lyrics`
+  }
+
+  // =====================================================
+  // SEARCH
   // =====================================================
 
   const debouncedSearch = useMemo(() =>
@@ -114,11 +115,8 @@ function MobilePage() {
       setLoading(true)
 
       try {
-        const data = await searchYouTube(value)
-
-        // 🔥 AQUÍ SE APLICA EL FILTRO REAL
-        setResults(filterKaraoke(data || []))
-
+        const data = await searchYouTube(forceKaraokeQuery(value))
+        setResults(data || [])
       } catch (err) {
         console.log(err)
         setResults([])
@@ -269,9 +267,21 @@ function MobilePage() {
 
     if (isQueueFull(queue)) return
 
-    if (!canAddSong(queue, deviceId)) return
+    if (!canAddSong(queue, deviceId)) {
+      showAlert({
+        icon: "warning",
+        title: "Ya tienes una canción",
+      })
+      return
+    }
 
-    if (isDuplicateSong(queue, song.youtubeId, deviceId)) return
+    if (isDuplicateSong(queue, song.youtubeId, deviceId)) {
+      showAlert({
+        icon: "info",
+        title: "Canción duplicada",
+      })
+      return
+    }
 
     await addSong(song)
 
@@ -305,6 +315,10 @@ function MobilePage() {
 
     <div className="min-h-screen bg-black text-white relative">
 
+      <div className="absolute inset-0">
+        <div className="absolute w-[700px] h-[700px] bg-cyan-500/10 blur-3xl rounded-full top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" />
+      </div>
+
       <div className="relative text-center pt-10">
         <h1 className="text-6xl font-black">
           M<span className="text-cyan-400">KARAOKE</span>
@@ -315,17 +329,18 @@ function MobilePage() {
         <input
           value={search}
           onChange={(e) => handleSearch(e.target.value)}
-          className="w-full p-4 rounded-2xl bg-black/60"
+          placeholder={editMode ? "Buscar reemplazo..." : "Buscar canción..."}
+          className="w-full px-4 py-4 rounded-2xl bg-black/60 border border-cyan-500/20 text-white"
         />
       </div>
 
       <div className="relative px-4 mt-6 space-y-3">
 
-        {loading && <p>Buscando...</p>}
+        {loading && <p className="text-zinc-400">Buscando...</p>}
 
         {results.map(song => (
 
-          <div key={song.youtubeId} className="flex gap-3 p-3 bg-black/60 rounded-xl">
+          <div key={song.youtubeId} className="flex items-center gap-3 p-3 bg-black/60 rounded-xl">
 
             <img
               src={`https://img.youtube.com/vi/${song.youtubeId}/hqdefault.jpg`}
@@ -333,7 +348,7 @@ function MobilePage() {
             />
 
             <div className="flex-1">
-              <p>{song.title}</p>
+              <p className="font-bold">{song.title}</p>
               <p className="text-sm text-zinc-400">{song.artist}</p>
             </div>
 
