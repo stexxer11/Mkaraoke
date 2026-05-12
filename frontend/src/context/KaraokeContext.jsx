@@ -27,33 +27,34 @@ export function KaraokeProvider({
 }) {
 
   // =====================================================
-  // DEVICE ID
+  // DEVICE ID (REAL MULTIUSER)
   // =====================================================
 
-  const getDeviceId = () => {
+  const [deviceId] =
+    useState(() => {
 
-    let id =
-      localStorage.getItem(
-        "mk_device_id"
-      )
+      const existingId =
+        localStorage.getItem(
+          "mk_device_id"
+        )
 
-    if (!id) {
+      if (existingId) {
 
-      id = crypto.randomUUID()
+        return existingId
+
+      }
+
+      const newId =
+        crypto.randomUUID()
 
       localStorage.setItem(
         "mk_device_id",
-        id
+        newId
       )
 
-    }
+      return newId
 
-    return id
-
-  }
-
-  const [deviceId] =
-    useState(getDeviceId)
+    })
 
   // =====================================================
   // QUEUE
@@ -76,18 +77,27 @@ export function KaraokeProvider({
   const socketRef =
     useRef(null)
 
+  // =====================================================
+  // CONNECT SOCKET
+  // =====================================================
+
   useEffect(() => {
 
-    const ws = new WebSocket(
+    const ws =
+      new WebSocket(
 
-      `${import.meta.env.VITE_WS_URL.replace(
-        "https",
-        "wss"
-      )}/ws`
+        `${import.meta.env.VITE_WS_URL.replace(
+          "https",
+          "wss"
+        )}/ws`
 
-    )
+      )
 
     socketRef.current = ws
+
+    // =========================================
+    // OPEN
+    // =========================================
 
     ws.onopen = () => {
 
@@ -95,7 +105,16 @@ export function KaraokeProvider({
         "WS CONNECTED"
       )
 
+      console.log(
+        "DEVICE ID:",
+        deviceId
+      )
+
     }
+
+    // =========================================
+    // MESSAGE
+    // =========================================
 
     ws.onmessage = (
       event
@@ -108,14 +127,19 @@ export function KaraokeProvider({
             event.data
           )
 
-        // ============================
+        // =====================================
         // QUEUE UPDATE
-        // ============================
+        // =====================================
 
         if (
           data.type ===
           "queue_update"
         ) {
+
+          console.log(
+            "QUEUE UPDATE:",
+            data.queue
+          )
 
           setQueue(
             data.queue || []
@@ -123,9 +147,9 @@ export function KaraokeProvider({
 
         }
 
-        // ============================
+        // =====================================
         // PLAYER EVENTS
-        // ============================
+        // =====================================
 
         if (
 
@@ -146,7 +170,7 @@ export function KaraokeProvider({
       } catch (err) {
 
         console.log(
-          "WS ERROR",
+          "WS PARSE ERROR",
           err
         )
 
@@ -154,7 +178,13 @@ export function KaraokeProvider({
 
     }
 
-    ws.onerror = (err) => {
+    // =========================================
+    // ERROR
+    // =========================================
+
+    ws.onerror = (
+      err
+    ) => {
 
       console.log(
         "WS ERROR",
@@ -163,23 +193,21 @@ export function KaraokeProvider({
 
     }
 
+    // =========================================
+    // CLOSE
+    // =========================================
+
     ws.onclose = () => {
 
       console.log(
         "WS CLOSED"
       )
 
-      // ============================
-      // AUTO RECONNECT
-      // ============================
-
-      setTimeout(() => {
-
-        window.location.reload()
-
-      }, 2000)
-
     }
+
+    // =========================================
+    // CLEANUP
+    // =========================================
 
     return () => {
 
@@ -187,7 +215,7 @@ export function KaraokeProvider({
 
     }
 
-  }, [])
+  }, [deviceId])
 
   // =====================================================
   // CURRENT SONG
@@ -237,8 +265,11 @@ export function KaraokeProvider({
       return activeQueue.filter(
 
         song =>
-          song.ownerId ===
-          deviceId
+
+          String(
+            song.ownerId
+          ) ===
+          String(deviceId)
 
       )
 
@@ -266,6 +297,11 @@ export function KaraokeProvider({
 
     try {
 
+      console.log(
+        "ADDING SONG WITH DEVICE:",
+        deviceId
+      )
+
       return await addSongApi({
 
         ownerId:
@@ -283,6 +319,8 @@ export function KaraokeProvider({
       })
 
     } catch (err) {
+
+      console.log(err)
 
       return {
 
@@ -317,7 +355,9 @@ export function KaraokeProvider({
         data
       )
 
-    } catch {
+    } catch (err) {
+
+      console.log(err)
 
       return {
         ok: false
@@ -340,7 +380,9 @@ export function KaraokeProvider({
           songId
         )
 
-      } catch {
+      } catch (err) {
+
+        console.log(err)
 
         return {
           ok: false
@@ -383,7 +425,9 @@ export function KaraokeProvider({
         songId
       )
 
-    } catch {
+    } catch (err) {
+
+      console.log(err)
 
       return {
         ok: false
@@ -418,19 +462,22 @@ export function KaraokeProvider({
   // MOVE SONG UP
   // =====================================================
 
-  const moveSongUp = () => {}
+  const moveSongUp =
+    () => {}
 
   // =====================================================
   // MOVE SONG DOWN
   // =====================================================
 
-  const moveSongDown = () => {}
+  const moveSongDown =
+    () => {}
 
   // =====================================================
   // REORDER QUEUE
   // =====================================================
 
-  const reorderQueue = () => {}
+  const reorderQueue =
+    () => {}
 
   // =====================================================
   // VISIBLE QUEUE
@@ -462,29 +509,47 @@ export function KaraokeProvider({
     <KaraokeContext.Provider
       value={{
 
+        // =====================================
         // STATE
+        // =====================================
+
         queue,
         visibleQueue,
         activeQueue,
         currentSong,
 
+        // =====================================
         // PLAYER
+        // =====================================
+
         playerVersion,
 
+        // =====================================
         // USER
+        // =====================================
+
         deviceId,
         mySongs,
         hasActiveSong,
 
+        // =====================================
         // USER ACTIONS
+        // =====================================
+
         addSong,
         editSong,
         cancelSong,
 
+        // =====================================
         // PLAYER ACTIONS
+        // =====================================
+
         playNextSong,
 
+        // =====================================
         // ADMIN
+        // =====================================
+
         playNow,
         removeSongById,
         moveSongUp,
