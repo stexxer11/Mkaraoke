@@ -55,8 +55,7 @@ function MobilePage() {
   }
 
   const alertOpen = useRef(null)
-  const alertLocked = useRef(false) // 🔥 NUEVO LOCK GLOBAL
-
+  const alertLocked = useRef(false)
   const lastSearch = useRef(0)
 
   const [search, setSearch] = useState("")
@@ -129,7 +128,7 @@ function MobilePage() {
   const isMySongPlaying = currentSong?.id === myActiveSong?.id
 
   // =====================================================
-  // ALERT SYSTEM FIXED
+  // ALERT SYSTEM FIX
   // =====================================================
 
   useEffect(() => {
@@ -164,7 +163,7 @@ function MobilePage() {
 
       alertLocked.current = true
 
-      showAlert({
+      Swal.fire({
         title: "Disfruta tu canción 🎤",
         html: `<b>${myActiveSong.title}</b>`,
         background: "#000",
@@ -177,7 +176,7 @@ function MobilePage() {
       return
     }
 
-    showAlert({
+    Swal.fire({
       title: isMyTurn
         ? "Tu turno está listo 🎤"
         : `Te faltan ${turnsLeftValue} turno(s)`,
@@ -207,7 +206,6 @@ function MobilePage() {
 
       if (res.isDenied && !isMySongPlaying) {
         alertLocked.current = true
-
         setEditMode(true)
         setEditSongData(myActiveSong)
         setSearch("")
@@ -216,17 +214,24 @@ function MobilePage() {
 
       if (res.dismiss === Swal.DismissReason.cancel) {
 
-        showAlert({
+        Swal.fire({
           title: "Eliminar de la cola",
           text: "Esta acción eliminará tu canción",
           icon: "warning",
           showCancelButton: true,
           confirmButtonText: "Sí, eliminar",
-          cancelButtonText: "No"
-        }).then(async confirm => {
+          cancelButtonText: "No",
+          background: "#000",
+          color: "#06b6d4",
+        }).then(async (confirm) => {
 
           if (confirm.isConfirmed) {
             await cancelSong(myActiveSong.id)
+
+            alertOpen.current = null
+            alertLocked.current = false
+            setEditMode(false)
+            setEditSongData(null)
           }
 
         })
@@ -273,12 +278,12 @@ function MobilePage() {
     setSearch("")
     setResults([])
 
-    // 🔥 desbloquear alert después de editar
+    alertOpen.current = null
     alertLocked.current = false
   }
 
   // =====================================================
-  // UI (NO TOCADO)
+  // UI
   // =====================================================
 
   return (
@@ -308,7 +313,6 @@ function MobilePage() {
         {loading && <p className="text-zinc-400">Buscando...</p>}
 
         {results.map(song => (
-
           <div key={song.youtubeId} className="flex items-center gap-3 p-3 bg-black/60 rounded-xl">
 
             <img
@@ -333,7 +337,6 @@ function MobilePage() {
             </button>
 
           </div>
-
         ))}
 
       </div>
