@@ -1,5 +1,4 @@
 import axios from "axios"
-import api from "./api"
 
 const API_URL = "https://mkaraoke-1.onrender.com"
 
@@ -16,7 +15,6 @@ export const searchYouTube = async (query) => {
     })
 
     return res.data
-
   } catch (err) {
     console.log(err)
     return []
@@ -28,25 +26,7 @@ export const searchYouTube = async (query) => {
 // =========================
 
 export const addSongApi = async (song) => {
-  const res = await api.post("/song", song)
-  return res.data
-}
-
-// =========================
-// EDIT SONG
-// =========================
-
-export const editSongApi = async (id, data) => {
-  const res = await api.put(`/song/${id}`, data)
-  return res.data
-}
-
-// =========================
-// CANCEL SONG
-// =========================
-
-export const cancelSongApi = async (id) => {
-  const res = await api.post(`/song/${id}/cancel`)
+  const res = await axios.post(`${API_URL}/queue/add`, song)
   return res.data
 }
 
@@ -55,7 +35,7 @@ export const cancelSongApi = async (id) => {
 // =========================
 
 export const nextSongApi = async () => {
-  const res = await api.post("/next")
+  const res = await axios.post(`${API_URL}/queue/next`)
   return res.data
 }
 
@@ -64,7 +44,7 @@ export const nextSongApi = async () => {
 // =========================
 
 export const playNowApi = async (id) => {
-  const res = await api.post(`/play-now/${id}`)
+  const res = await axios.post(`${API_URL}/queue/playnow/${id}`)
   return res.data
 }
 
@@ -73,6 +53,6 @@ export const playNowApi = async (id) => {
 // =========================
 
 export const removeSongApi = async (id) => {
-  const res = await api.post(`/song/${id}/cancel`)
+  const res = await axios.delete(`${API_URL}/queue/remove/${id}`)
   return res.data
 }
