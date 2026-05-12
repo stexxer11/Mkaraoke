@@ -1,24 +1,30 @@
-from fastapi import FastAPI, Depends, WebSocket, WebSocketDisconnect, Query
+from fastapi import (
+    FastAPI,
+    HTTPException,
+    WebSocket,
+    WebSocketDisconnect
+)
+
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy.orm import Session
-from database import SessionLocal, Base, engine
-import models
-from schemas import SongCreate, SongUpdate
-from ws_manager import manager
-import os
-import httpx  # 👈 CAMBIO (antes requests)
+from pydantic import BaseModel
 
-# =========================
-# INIT DB
-# =========================
+import aiosqlite
+import httpx
+import asyncio
+import json
+import time
 
-Base.metadata.create_all(bind=engine)
+from uuid import uuid4
+
+# =====================================================
+# APP
+# =====================================================
 
 app = FastAPI()
 
-# =========================
+# =====================================================
 # CORS
-# =========================
+# =====================================================
 
 app.add_middleware(
     CORSMiddleware,
@@ -28,302 +34,475 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# =========================
-# DB DEPENDENCY
-# =========================
+# =====================================================
+# CONFIG
+# =====================================================
 
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+API_KEY = "TU_API_KEY"
 
-# =========================
-# YOUTUBE SEARCH (FIX async)
-# =========================
+db = None
 
-@app.get("/search")
-async def search(q: str = Query(...)):
+clients = set()
 
-    api_key = os.getenv("YOUTUBE_API_KEY")
+http_client = httpx.AsyncClient(
+    timeout=10
+)
 
-    if not api_key:
-        return []
+# =====================================================
+# MODELS
+# =====================================================
 
-    url = (
-        "https://www.googleapis.com/youtube/v3/search"
-        f"?part=snippet&type=video&maxResults=10&q={q}&key={api_key}"
+class SongCreate(BaseModel):
+
+    ownerId: str
+    title: str
+    artist: str
+    youtubeId: str
+
+
+# =====================================================
+# STARTUP
+# =====================================================
+
+@app.on_event("startup")
+async def startup():
+
+    global db
+
+    db = await aiosqlite.connect(
+        "karaoke.db"
     )
 
-    try:
-        async with httpx.AsyncClient() as client:  # 👈 FIX
-            res = await client.get(url)
-            data = res.json()
+    await db.execute("""
+    CREATE TABLE IF NOT EXISTS songs (
 
-        results = []
+        id TEXT PRIMARY KEY,
 
-        for item in data.get("items", []):
-            results.append({
-                "youtubeId": item["id"]["videoId"],
-                "title": item["snippet"]["title"],
-                "artist": item["snippet"]["channelTitle"]
-            })
+        owner_id TEXT,
 
-        return results
+        title TEXT,
+        artist TEXT,
+        youtube_id TEXT,
 
-    except Exception as e:
-        print("SEARCH ERROR:", e)
-        return []
+        status TEXT,
 
-# =========================
-# QUEUE BUILDER (FIX ORDER)
-# =========================
-
-def build_queue(db: Session):
-
-    songs = db.query(models.Song).order_by(
-        models.Song.status.desc(),        # 👈 FIX: playing/queued primero
-        models.Song.createdAt.asc()
-    ).all()
-
-    return [
-        {
-            "id": s.id,
-            "ownerId": s.ownerId,
-            "title": s.title,
-            "artist": s.artist,
-            "youtubeId": s.youtubeId,
-            "status": s.status,
-            "transpose": s.transpose
-        }
-        for s in songs
-    ]
-
-# =========================
-# BROADCAST (SAFE)
-# =========================
-
-async def broadcast_queue(db: Session):
-    try:
-        await manager.broadcast({
-            "type": "queue_update",
-            "queue": build_queue(db)
-        })
-    except Exception as e:
-        print("BROADCAST ERROR:", e)
-
-# =========================
-# ADD SONG
-# =========================
-
-@app.post("/song")
-async def add_song(song: SongCreate, db: Session = Depends(get_db)):
-
-    existing = db.query(models.Song).filter(
-        models.Song.ownerId == song.ownerId,
-        models.Song.status.in_(["queued", "playing"])
-    ).first()
-
-    if existing:
-        return {"ok": False, "error": "USER_ALREADY_HAS_SONG"}
-
-    new_song = models.Song(
-        title=song.title,
-        artist=song.artist,
-        youtubeId=song.youtubeId,
-        ownerId=song.ownerId,
-        status="queued"
+        created_at INTEGER,
+        updated_at INTEGER
     )
+    """)
 
-    db.add(new_song)
-    db.commit()
-    db.refresh(new_song)
+    # ============================
+    # PERFORMANCE INDEXES
+    # ============================
 
-    await broadcast_queue(db)
+    await db.execute("""
+    CREATE INDEX IF NOT EXISTS idx_status
+    ON songs(status)
+    """)
 
-    return {"ok": True}
+    await db.execute("""
+    CREATE INDEX IF NOT EXISTS idx_created
+    ON songs(created_at)
+    """)
 
-# =========================
-# CANCEL SONG
-# =========================
+    await db.commit()
 
-@app.post("/song/{song_id}/cancel")
-async def cancel_song(song_id: str, db: Session = Depends(get_db)):
+# =====================================================
+# HELPERS
+# =====================================================
 
-    song = db.query(models.Song).filter(models.Song.id == song_id).first()
-
-    if not song:
-        return {"ok": False}
-
-    song.status = "cancelled"
-    db.commit()
-
-    await broadcast_queue(db)
-
-    return {"ok": True}
-
-# =========================
-# EDIT SONG
-# =========================
-
-@app.put("/song/{song_id}")
-async def edit_song(song_id: str, data: SongUpdate, db: Session = Depends(get_db)):
-
-    song = db.query(models.Song).filter(models.Song.id == song_id).first()
-
-    if not song:
-        return {"ok": False}
-
-    if song.status == "playing":
-        return {"ok": False, "error": "ALREADY_PLAYING"}
-
-    if data.title:
-        song.title = data.title
-    if data.artist:
-        song.artist = data.artist
-    if data.youtubeId:
-        song.youtubeId = data.youtubeId
-    if data.transpose is not None:
-        song.transpose = data.transpose
-
-    db.commit()
-
-    await broadcast_queue(db)
-
-    return {"ok": True}
-
-# =========================
-# NEXT SONG
-# =========================
-
-current_song = None
-
-@app.post("/next")
-async def next_song(db: Session = Depends(get_db)):
-
-    global current_song
-
-    playing = db.query(models.Song).filter(
-        models.Song.status == "playing"
-    ).first()
-
-    if playing:
-        playing.status = "done"
-        db.commit()
-
-    nxt = db.query(models.Song).filter(
-        models.Song.status == "queued"
-    ).order_by(models.Song.createdAt.asc()).first()
-
-    if not nxt:
-
-        current_song = None
-
-        await manager.broadcast({"type": "STOP_VIDEO"})
-        await broadcast_queue(db)
-
-        return {"ok": True}
-
-    nxt.status = "playing"
-    db.commit()
-
-    current_song = {
-        "id": nxt.id,
-        "title": nxt.title,
-        "artist": nxt.artist,
-        "youtubeId": nxt.youtubeId,
-        "ownerId": nxt.ownerId
-    }
-
-    await manager.broadcast({
-        "type": "LOAD_VIDEO",
-        "song": current_song
-    })
-
-    await broadcast_queue(db)
-
-    return current_song
-
-# =========================
-# PLAY NOW
-# =========================
-
-@app.post("/play-now/{song_id}")
-async def play_now(song_id: str, db: Session = Depends(get_db)):
-
-    global current_song
-
-    db.query(models.Song).filter(
-        models.Song.status == "playing"
-    ).update({"status": "queued"})
-
-    song = db.query(models.Song).filter(models.Song.id == song_id).first()
-
-    if not song:
-        return {"ok": False}
-
-    song.status = "playing"
-    db.commit()
-
-    current_song = {
-        "id": song.id,
-        "title": song.title,
-        "artist": song.artist,
-        "youtubeId": song.youtubeId,
-        "ownerId": song.ownerId
-    }
-
-    await manager.broadcast({
-        "type": "LOAD_VIDEO",
-        "song": current_song
-    })
-
-    await broadcast_queue(db)
-
-    return {"ok": True}
-
-# =========================
-# STATE (NUEVO - IMPORTANTE)
-# =========================
-
-@app.get("/state")
-async def get_state(db: Session = Depends(get_db)):
+def row_to_song(row):
 
     return {
-        "queue": build_queue(db),
-        "current": current_song
+        "id": row[0],
+        "ownerId": row[1],
+        "title": row[2],
+        "artist": row[3],
+        "youtubeId": row[4],
+        "status": row[5],
+        "createdAt": row[6],
+        "updatedAt": row[7],
     }
 
-# =========================
-# WEBSOCKET
-# =========================
+# =====================================================
+# QUEUE HELPERS
+# =====================================================
 
-@app.websocket("/ws")
-async def ws(websocket: WebSocket):
+async def get_queue():
 
-    await manager.connect(websocket)
-    db = SessionLocal()
+    cursor = await db.execute("""
+        SELECT *
+        FROM songs
+        WHERE status IN ('queued', 'playing')
+        ORDER BY created_at ASC
+    """)
+
+    rows = await cursor.fetchall()
+
+    return [
+        row_to_song(r)
+        for r in rows
+    ]
+
+async def get_current_song():
+
+    cursor = await db.execute("""
+        SELECT *
+        FROM songs
+        WHERE status = 'playing'
+        LIMIT 1
+    """)
+
+    row = await cursor.fetchone()
+
+    if not row:
+        return None
+
+    return row_to_song(row)
+
+# =====================================================
+# BROADCAST
+# =====================================================
+
+async def broadcast(data):
+
+    dead = set()
+
+    tasks = []
+
+    message = json.dumps(data)
+
+    for ws in clients:
+
+        tasks.append(
+            send_safe(
+                ws,
+                message,
+                dead
+            )
+        )
+
+    await asyncio.gather(*tasks)
+
+    clients.difference_update(dead)
+
+async def send_safe(ws, message, dead):
 
     try:
 
-        # estado inicial seguro
-        await websocket.send_json({
-            "type": "queue_update",
-            "queue": build_queue(db)
+        await ws.send_text(message)
+
+    except:
+
+        dead.add(ws)
+
+# =====================================================
+# BROADCAST QUEUE
+# =====================================================
+
+async def broadcast_queue():
+
+    await broadcast({
+
+        "type": "queue_update",
+
+        "queue": await get_queue()
+    })
+
+# =====================================================
+# BROADCAST PLAYER
+# =====================================================
+
+async def broadcast_player():
+
+    current = await get_current_song()
+
+    if not current:
+
+        await broadcast({
+
+            "type": "STOP_VIDEO",
+
+            "timestamp":
+                int(time.time() * 1000)
         })
 
-        if current_song:
-            await websocket.send_json({
-                "type": "LOAD_VIDEO",
-                "song": current_song
-            })
+        return
+
+    await broadcast({
+
+        "type": "LOAD_VIDEO",
+
+        "song": current,
+
+        "timestamp":
+            int(time.time() * 1000)
+    })
+
+# =====================================================
+# WEBSOCKET
+# =====================================================
+
+@app.websocket("/ws")
+
+async def websocket_endpoint(ws: WebSocket):
+
+    await ws.accept()
+
+    clients.add(ws)
+
+    await ws.send_json({
+
+        "type": "queue_update",
+
+        "queue": await get_queue()
+    })
+
+    current = await get_current_song()
+
+    if current:
+
+        await ws.send_json({
+
+            "type": "LOAD_VIDEO",
+
+            "song": current,
+
+            "timestamp":
+                int(time.time() * 1000)
+        })
+
+    try:
 
         while True:
-            await websocket.receive_text()
+
+            await ws.receive_text()
 
     except WebSocketDisconnect:
-        manager.disconnect(websocket)
 
-    finally:
-        db.close()
+        clients.discard(ws)
+
+# =====================================================
+# ADD SONG
+# =====================================================
+
+@app.post("/queue/add")
+
+async def add_song(song: SongCreate):
+
+    cursor = await db.execute("""
+        SELECT 1
+        FROM songs
+        WHERE owner_id = ?
+        AND status IN ('queued', 'playing')
+        LIMIT 1
+    """, (song.ownerId,))
+
+    exists = await cursor.fetchone()
+
+    if exists:
+
+        raise HTTPException(
+            status_code=400,
+            detail="Ya tienes una canción activa"
+        )
+
+    cursor = await db.execute("""
+        SELECT 1
+        FROM songs
+        WHERE status = 'playing'
+        LIMIT 1
+    """)
+
+    playing = await cursor.fetchone()
+
+    status = (
+        "queued"
+        if playing
+        else "playing"
+    )
+
+    now = int(time.time() * 1000)
+
+    await db.execute("""
+        INSERT INTO songs (
+
+            id,
+            owner_id,
+
+            title,
+            artist,
+            youtube_id,
+
+            status,
+
+            created_at,
+            updated_at
+
+        )
+
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    """, (
+
+        str(uuid4()),
+        song.ownerId,
+
+        song.title,
+        song.artist,
+        song.youtubeId,
+
+        status,
+
+        now,
+        now
+    ))
+
+    await db.commit()
+
+    await asyncio.gather(
+
+        broadcast_queue(),
+
+        broadcast_player()
+    )
+
+    return {
+        "ok": True
+    }
+
+# =====================================================
+# NEXT SONG
+# =====================================================
+
+@app.post("/queue/next")
+
+async def next_song():
+
+    now = int(time.time() * 1000)
+
+    await db.execute("""
+        UPDATE songs
+
+        SET
+            status = 'done',
+            updated_at = ?
+
+        WHERE status = 'playing'
+    """, (now,))
+
+    cursor = await db.execute("""
+        SELECT id
+        FROM songs
+        WHERE status = 'queued'
+        ORDER BY created_at ASC
+        LIMIT 1
+    """)
+
+    nxt = await cursor.fetchone()
+
+    if nxt:
+
+        await db.execute("""
+            UPDATE songs
+
+            SET
+                status = 'playing',
+                updated_at = ?
+
+            WHERE id = ?
+        """, (
+
+            now,
+            nxt[0]
+        ))
+
+    await db.commit()
+
+    await asyncio.gather(
+
+        broadcast_queue(),
+
+        broadcast_player()
+    )
+
+    return {
+        "ok": True
+    }
+
+# =====================================================
+# PLAY NOW
+# =====================================================
+
+@app.post("/queue/playnow/{song_id}")
+
+async def play_now(song_id: str):
+
+    now = int(time.time() * 1000)
+
+    await db.execute("""
+        UPDATE songs
+        SET status = 'queued'
+        WHERE status = 'playing'
+    """)
+
+    await db.execute("""
+        UPDATE songs
+
+        SET
+            status = 'playing',
+            updated_at = ?
+
+        WHERE id = ?
+    """, (
+
+        now,
+        song_id
+    ))
+
+    await db.commit()
+
+    await asyncio.gather(
+
+        broadcast_queue(),
+
+        broadcast_player()
+    )
+
+    return {
+        "ok": True
+    }
+
+# =====================================================
+# REMOVE SONG
+# =====================================================
+
+@app.delete("/queue/remove/{song_id}")
+
+async def remove_song(song_id: str):
+
+    await db.execute("""
+        UPDATE songs
+
+        SET
+            status = 'cancelled',
+            updated_at = ?
+
+        WHERE id = ?
+    """, (
+
+        int(time.time() * 1000),
+        song_id
+    ))
+
+    await db.commit()
+
+    await asyncio.gather(
+
+        broadcast_queue(),
+
+        broadcast_player()
+    )
+
+    return {
+        "ok": True
+    }
