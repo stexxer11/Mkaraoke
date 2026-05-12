@@ -1,107 +1,33 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+/* =========================
+   RESET GLOBAL
+========================= */
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+}
 
 body {
-  margin: 0;
-  background: radial-gradient(circle at top, #0a0a0a 0%, #050505 60%, #000 100%);
+  background: #000;
   color: white;
-  font-family: Arial, sans-serif;
   overflow-x: hidden;
 }
 
-/* VIDEO BAJANDO */
-@keyframes videoDrop {
-  0% {
-    transform: translateY(-100%);
-    opacity: 0;
-  }
-
-  100% {
-    transform: translateY(0%);
-    opacity: 1;
-  }
-}
-
-/* SCROLL INVISIBLE */
-::-webkit-scrollbar {
-  width: 0px;
-}
-
-/* GLASS */
-.glass {
-  background: rgba(255, 255, 255, 0.04);
-  backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-}
-
-/* GLOW */
-.glow-cyan {
-  box-shadow: 0 0 20px rgba(6, 182, 212, 0.25);
-}
-
-/* TAP */
-.tap {
-  transition: transform 0.15s ease;
-}
-
-.tap:active {
-  transform: scale(0.97);
-}
-
-.swal-mobile {
-  width: 100% !important;
-  height: 100vh !important;
-  border-radius: 0 !important;
-}
-
-.edit-modal {
-  border-radius: 18px !important;
-  border: 1px solid rgba(255,255,255,0.08) !important;
-}
-
-/* mejora scroll dentro del modal */
-.swal2-html-container {
-  overflow: hidden !important;
-}
-
-/* Modal centrado tipo móvil */
-.swal2-popup {
-  width: 92% !important;
-  max-width: 420px !important;
-}
-
-/* Fondo oscuro limpio */
-.swal2-backdrop-show {
-  background: rgba(0,0,0,0.75) !important;
-}
-
-/* Evitar scroll raro */
-body.swal2-shown {
-  overflow: hidden !important;
-}
-
 /* =========================
-   MOBILE PAGE LAYOUT
+   MOBILE PAGE
 ========================= */
 
 .mobile {
+  padding: 16px;
   min-height: 100vh;
-  display: flex;
-  flex-direction: column;
-  background: radial-gradient(circle at top, #0a0a0a 0%, #050505 60%, #000 100%);
-  color: white;
+  background: #000;
 }
 
-/* HEADER */
 .mobile-header {
-  padding: 18px;
-  border-bottom: 1px solid rgba(255,255,255,0.08);
-  backdrop-filter: blur(12px);
-  background: rgba(9, 9, 11, 0.85);
-  position: sticky;
-  top: 0;
-  z-index: 50;
+  text-align: center;
+  margin-bottom: 16px;
 }
 
 .mobile-title {
@@ -111,104 +37,184 @@ body.swal2-shown {
 }
 
 .mobile-subtitle {
-  color: #a1a1aa;
-  margin-top: 4px;
+  color: #71717a;
   font-size: 14px;
+  margin-top: 4px;
 }
 
-/* SEARCH */
 .mobile-search {
-  padding: 16px;
-  border-bottom: 1px solid rgba(255,255,255,0.08);
+  margin-bottom: 16px;
 }
 
 .mobile-input {
   width: 100%;
-  padding: 14px;
-  border-radius: 16px;
-  background: #18181b;
-  border: 1px solid rgba(255,255,255,0.08);
-  outline: none;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid #27272a;
+  background: #0a0a0a;
   color: white;
+  outline: none;
 }
 
-/* RESULTS */
+.mobile-input:focus {
+  border-color: #22d3ee;
+}
+
 .mobile-results {
-  flex: 1;
-  overflow-y: auto;
-  padding: 16px;
   display: flex;
   flex-direction: column;
-  gap: 14px;
-}
-
-/* CARD */
-.song-card {
-  background: #18181b;
-  border: 1px solid rgba(255,255,255,0.08);
-  border-radius: 20px;
-  padding: 10px;
-  display: flex;
   gap: 12px;
-  align-items: center;
 }
 
-.song-thumb {
-  width: 90px;
-  height: 90px;
+.song-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: #0a0a0a;
+  border: 1px solid #27272a;
+  padding: 10px;
   border-radius: 14px;
-  overflow: hidden;
-  flex-shrink: 0;
 }
 
 .song-thumb img {
-  width: 100%;
-  height: 100%;
+  width: 70px;
+  height: 50px;
+  border-radius: 8px;
   object-fit: cover;
 }
 
 .song-info {
   flex: 1;
-  min-width: 0;
 }
 
 .song-title {
-  font-weight: 700;
   font-size: 14px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  font-weight: 700;
 }
 
 .song-artist {
-  color: #a1a1aa;
   font-size: 12px;
-  margin-top: 4px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  color: #a1a1aa;
 }
 
-/* BUTTON */
 .song-btn {
   background: #22d3ee;
+  border: none;
   color: black;
   font-weight: 900;
-  padding: 10px 14px;
-  border-radius: 14px;
-  border: none;
+  padding: 8px 12px;
+  border-radius: 10px;
+  cursor: pointer;
 }
 
-/* FOOTER */
+.song-btn:hover {
+  background: #06b6d4;
+}
+
 .mobile-footer {
-  padding: 12px;
-  border-top: 1px solid rgba(255,255,255,0.08);
+  margin-top: 20px;
   text-align: center;
   color: #71717a;
-  background: #09090b;
+  font-size: 12px;
 }
 
-/* UTIL */
-.scrollbar-hide::-webkit-scrollbar {
-  width: 0;
+/* =========================
+   ADMIN PAGE
+========================= */
+
+.admin-container,
+.min-h-screen {
+  background: #000;
+}
+
+button {
+  cursor: pointer;
+  transition: 0.2s ease;
+}
+
+button:hover {
+  transform: scale(1.05);
+}
+
+/* queue card */
+.queue-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: #0a0a0a;
+  border: 1px solid #27272a;
+  padding: 12px;
+  border-radius: 14px;
+  margin-bottom: 10px;
+}
+
+/* =========================
+   TV PAGE
+========================= */
+
+.tv-wrapper {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+  background: black;
+  overflow: hidden;
+}
+
+/* idle glow */
+.tv-glow {
+  position: absolute;
+  width: 700px;
+  height: 700px;
+  background: rgba(34, 211, 238, 0.1);
+  filter: blur(120px);
+  border-radius: 50%;
+}
+
+/* QR container */
+.tv-qr {
+  background: white;
+  padding: 20px;
+  border-radius: 30px;
+  box-shadow: 0 0 80px rgba(34, 211, 238, 0.25);
+}
+
+/* floating info */
+.tv-info {
+  position: absolute;
+  top: 20px;
+  left: 20px;
+  background: rgba(0,0,0,0.7);
+  padding: 12px 16px;
+  border-radius: 14px;
+  border: 1px solid rgba(34,211,238,0.2);
+  backdrop-filter: blur(10px);
+}
+
+/* animation smooth */
+.fade {
+  transition: all 0.3s ease;
+}
+
+/* =========================
+   UTILITIES
+========================= */
+
+.text-center {
+  text-align: center;
+}
+
+.hidden {
+  display: none;
+}
+
+.flex {
+  display: flex;
+}
+
+.gap-10 {
+  gap: 10px;
+}
+
+.rounded-xl {
+  border-radius: 12px;
 }

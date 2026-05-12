@@ -7,25 +7,40 @@ function TvPage() {
 
   const { playNextSong } = useKaraoke()
 
+  // =========================
+  // STATE
+  // =========================
+
   const [currentSong, setCurrentSong] = useState(null)
   const [videoReady, setVideoReady] = useState(false)
   const [showInfo, setShowInfo] = useState(false)
   const [qrUrl, setQrUrl] = useState("")
   const [playerKey, setPlayerKey] = useState(0)
 
+  // =========================
+  // REFS
+  // =========================
+
   const playerRef = useRef(null)
   const socketRef = useRef(null)
   const infoTimeoutRef = useRef(null)
 
   // =========================
-  // SAFE WINDOW INIT
+  // SAFE ORIGIN
+  // =========================
+
+  const origin =
+    typeof window !== "undefined"
+      ? window.location.origin
+      : ""
+
+  // =========================
+  // QR INIT
   // =========================
 
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      setQrUrl(window.location.origin)
-    }
-  }, [])
+    if (origin) setQrUrl(origin)
+  }, [origin])
 
   // =========================
   // SOCKET
@@ -33,9 +48,15 @@ function TvPage() {
 
   useEffect(() => {
 
-    const wsUrl = import.meta.env.VITE_WS_URL
-      ? import.meta.env.VITE_WS_URL.replace("https", "wss")
-      : ""
+    const wsUrl =
+      import.meta.env.VITE_WS_URL
+        ? import.meta.env.VITE_WS_URL.replace("https", "wss")
+        : null
+
+    if (!wsUrl) {
+      console.error("VITE_WS_URL no definido")
+      return
+    }
 
     const socket = new WebSocket(`${wsUrl}/ws`)
     socketRef.current = socket
@@ -55,13 +76,18 @@ function TvPage() {
 
         if (data.type === "LOAD_VIDEO") {
 
-          setVideoReady(false)
-          setShowInfo(false)
-
           clearTimeout(infoTimeoutRef.current)
 
+          setVideoReady(false)
+          setShowInfo(false)
+          setCurrentSong(null)
+
           setPlayerKey(prev => prev + 1)
-          setCurrentSong(data.song)
+
+          // pequeño delay evita glitch YouTube reload
+          setTimeout(() => {
+            setCurrentSong(data.song)
+          }, 50)
         }
 
         // =====================
@@ -70,11 +96,11 @@ function TvPage() {
 
         if (data.type === "STOP_VIDEO") {
 
-          setShowInfo(false)
-          setVideoReady(false)
-          setCurrentSong(null)
-
           clearTimeout(infoTimeoutRef.current)
+
+          setVideoReady(false)
+          setShowInfo(false)
+          setCurrentSong(null)
 
           setPlayerKey(prev => prev + 1)
         }
@@ -107,6 +133,7 @@ function TvPage() {
   const handleStateChange = async (event) => {
 
     if (event.data === 1) {
+
       setVideoReady(true)
       setShowInfo(true)
 
@@ -136,18 +163,19 @@ function TvPage() {
     }
   }
 
+  // =========================
+  // CLEANUP
+  // =========================
+
   useEffect(() => {
-    return () => clearTimeout(infoTimeoutRef.current)
+    return () => {
+      clearTimeout(infoTimeoutRef.current)
+    }
   }, [])
 
   // =========================
-  // YOUTUBE OPTIONS SAFE
+  // YOUTUBE OPTIONS
   // =========================
-
-  const origin =
-    typeof window !== "undefined"
-      ? window.location.origin
-      : ""
 
   const opts = {
     width: "100%",
@@ -224,24 +252,19 @@ function TvPage() {
         <div className={`absolute top-5 left-5 bg-black/70 px-5 py-3 rounded-2xl transition ${
           showInfo ? "opacity-100" : "opacity-0"
         }`}>
-
           <h2 className="text-2xl font-black">
             {currentSong.title}
           </h2>
-
           <p className="text-zinc-400">
             {currentSong.artist}
           </p>
-
         </div>
       )}
 
       {/* QR MINI */}
       {currentSong && (
         <div className="absolute bottom-5 right-5 bg-black/70 p-4 rounded-3xl">
-
           <QRCodeCanvas value={qrUrl} size={120} />
-
         </div>
       )}
 
