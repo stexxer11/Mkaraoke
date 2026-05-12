@@ -116,7 +116,38 @@ function MobilePage() {
     debouncedSearch(value)
   }
 
-useEffect(() => {
+  useEffect(() => {
+    return () => debouncedSearch.cancel()
+  }, [debouncedSearch])
+
+  const mySongs = useMemo(() =>
+    queue.filter(song =>
+      song.ownerId === deviceId &&
+      song.status !== "done" &&
+      song.status !== "cancelled"
+    )
+  , [queue, deviceId])
+
+  const myActiveSong = useMemo(() => mySongs[0] || null, [mySongs])
+
+  const turnsLeft = useMemo(() => {
+
+    if (!myActiveSong) return -1
+
+    const activeQueue = queue.filter(
+      s => s.status === "queued" || s.status === "playing"
+    )
+
+    return activeQueue.findIndex(s =>
+      s.id === myActiveSong.id
+    )
+
+  }, [queue, myActiveSong])
+
+  const isMyTurn = turnsLeft === 0
+  const isMySongPlaying = currentSong?.id === myActiveSong?.id
+
+  useEffect(() => {
 
   if (!myActiveSong) {
     alertOpen.current = null
@@ -124,12 +155,21 @@ useEffect(() => {
     return
   }
 
-  const turnsLeftValue = getTurnsLeft()
+  const activeQueue = queue.filter(
+    s => s.status === "queued" || s.status === "playing"
+  )
+
+  const position = activeQueue.findIndex(
+    s => s.id === myActiveSong.id
+  )
+
+  const turnsLeftValue = position === -1 ? 0 : position
 
   const alertKey =
     `${myActiveSong.id}-${turnsLeftValue}-${currentSong?.id}`
 
   if (alertOpen.current === alertKey) return
+
   alertOpen.current = alertKey
 
   if (isMySongPlaying) {
@@ -140,6 +180,8 @@ useEffect(() => {
       background: "#000",
       color: "#06b6d4",
       showConfirmButton: false,
+      allowOutsideClick: false,
+      allowEscapeKey: false,
     })
 
     return
@@ -154,14 +196,16 @@ useEffect(() => {
       <b>${myActiveSong.title}</b>
       <br/>
       <span style="opacity:0.7;font-size:13px">
-        ${isMyTurn ? "Listo para cantar" : "Espera tu turno"}
+        ${isMyTurn ? "Prepara tu canción" : "En cola de espera"}
       </span>
     `,
 
     background: "#000",
     color: "#06b6d4",
 
-    showConfirmButton: false,
+    showConfirmButton: false,     // elimina OK
+    allowOutsideClick: false,     // no cerrar tocando fuera
+    allowEscapeKey: false,        // no cerrar con ESC
 
     showDenyButton: true,
     denyButtonText: "Editar canción",
@@ -182,7 +226,7 @@ useEffect(() => {
 
       showAlert({
         title: "Eliminar de la cola",
-        text: "¿Seguro que quieres cancelar tu canción?",
+        text: "Esta acción eliminará tu canción",
         icon: "warning",
         showCancelButton: true,
         confirmButtonText: "Sí, eliminar",
@@ -190,15 +234,7 @@ useEffect(() => {
       }).then(async confirm => {
 
         if (confirm.isConfirmed) {
-
           await cancelSong(myActiveSong.id)
-
-          // 🔥 FIX UI INMEDIATO (evita delay visual)
-          setEditMode(false)
-          setEditSongData(null)
-          setSearch("")
-          setResults([])
-
         }
 
       })
@@ -210,6 +246,7 @@ useEffect(() => {
   queue,
   currentSong,
   myActiveSong,
+  turnsLeft,
   isMyTurn,
   isMySongPlaying,
   deviceId
