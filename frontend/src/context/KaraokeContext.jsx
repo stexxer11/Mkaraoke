@@ -14,7 +14,7 @@ import {
   nextSongApi,
   playNowApi,
   removeSongApi,
-} from "../services/karaokeApi"
+} from "../services/youtubeApi"
 
 const KaraokeContext = createContext()
 
