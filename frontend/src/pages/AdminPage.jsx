@@ -10,7 +10,9 @@ function AdminPage() {
     playNextSong,
     playNow,
     removeSongById,
-    addSong,
+    repeatSong,
+    reorderQueue: reorderQueueAction,
+    restartSong,
   } = useKaraoke()
 
   // =====================================================
@@ -29,7 +31,9 @@ function AdminPage() {
   }
 
   const handlePlayNow = (song) => {
+
     if (!song?.id) return
+
     playNow(song.id)
   }
 
@@ -50,33 +54,33 @@ function AdminPage() {
     await removeSongById(song.id)
   }
 
-  const handleRestartSong = () => {
+  const handleRestartSong = async () => {
+
     if (!currentSong) return
-    playNow(currentSong.id)
+
+    await restartSong(currentSong.id)
   }
 
-  const handleRepeat = (song) => {
-
-    addSong({
-      title: song.title,
-      artist: song.artist,
-      youtubeId: song.youtubeId,
-      ownerId: song.ownerId || "system",
-    })
+  const handleRepeat = async (song) => {
+    await repeatSong(song)
   }
 
   // =====================================================
-  // REORDER (LOCAL)
+  // REAL REORDER (DB + WS)
   // =====================================================
 
-  const reorderQueue = (newQueue) => {
-    console.log(
-      "NEW ORDER:",
-      newQueue.map((s) => s.id)
-    )
+  const reorderQueue = async (newQueue) => {
+
+    try {
+
+      await reorderQueueAction(newQueue)
+
+    } catch (err) {
+      console.log(err)
+    }
   }
 
-  const moveUp = (index) => {
+  const moveUp = async (index) => {
 
     if (index === 0) return
 
@@ -85,10 +89,10 @@ function AdminPage() {
     ;[newQueue[index - 1], newQueue[index]] =
       [newQueue[index], newQueue[index - 1]]
 
-    reorderQueue(newQueue)
+    await reorderQueue(newQueue)
   }
 
-  const moveDown = (index) => {
+  const moveDown = async (index) => {
 
     if (index === queue.length - 1) return
 
@@ -97,7 +101,7 @@ function AdminPage() {
     ;[newQueue[index + 1], newQueue[index]] =
       [newQueue[index], newQueue[index + 1]]
 
-    reorderQueue(newQueue)
+    await reorderQueue(newQueue)
   }
 
   // =====================================================
@@ -116,7 +120,7 @@ function AdminPage() {
     e.preventDefault()
   }
 
-  const handleDrop = () => {
+  const handleDrop = async () => {
 
     const from = dragItem.current
     const to = dragOverItem.current
@@ -129,7 +133,7 @@ function AdminPage() {
 
     newQueue.splice(to, 0, moved)
 
-    reorderQueue(newQueue)
+    await reorderQueue(newQueue)
 
     dragItem.current = null
     dragOverItem.current = null
@@ -144,6 +148,7 @@ function AdminPage() {
 
       {/* HEADER */}
       <div className="mb-8">
+
         <h1 className="text-5xl font-black text-cyan-400">
           MKARAOKE ADMIN
         </h1>
@@ -151,6 +156,7 @@ function AdminPage() {
         <p className="text-zinc-500 mt-2">
           Control profesional de cola
         </p>
+
       </div>
 
       {/* CURRENT */}
@@ -162,6 +168,7 @@ function AdminPage() {
 
         {currentSong ? (
           <>
+
             <h2 className="text-3xl font-black">
               {currentSong.title}
             </h2>
@@ -169,6 +176,7 @@ function AdminPage() {
             <p className="text-zinc-500">
               {currentSong.artist}
             </p>
+
           </>
         ) : (
           <p className="text-zinc-500">
@@ -224,6 +232,7 @@ function AdminPage() {
 
             {/* INFO */}
             <div>
+
               <h3 className="font-bold">
                 {song.title}
               </h3>
@@ -231,6 +240,7 @@ function AdminPage() {
               <p className="text-zinc-500">
                 {song.artist}
               </p>
+
             </div>
 
             {/* ACTIONS */}
