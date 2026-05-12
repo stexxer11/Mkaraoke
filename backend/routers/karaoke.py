@@ -58,6 +58,43 @@ def get_db():
 current_song = None
 
 # ==========================================
+# HELPER
+# ==========================================
+
+def build_queue_payload(db):
+
+    songs = db.query(models.Song).all()
+
+    queue = []
+
+    for song in songs:
+
+        queue.append({
+            "id": song.id,
+            "title": song.title,
+            "artist": song.artist,
+            "youtubeId": song.youtubeId,
+            "ownerId": song.ownerId,
+            "status": song.status,
+            "transpose": song.transpose
+        })
+
+    return queue
+
+# ==========================================
+# BROADCAST QUEUE
+# ==========================================
+
+async def broadcast_queue(db):
+
+    queue = build_queue_payload(db)
+
+    await manager.broadcast({
+        "type": "queue_update",
+        "queue": queue
+    })
+
+# ==========================================
 # YOUTUBE SEARCH
 # ==========================================
 
@@ -83,8 +120,6 @@ def youtube_search(q: str):
         )
 
         data = response.json()
-
-        print("YOUTUBE RESPONSE:", data)
 
         items = data.get("items", [])
 
@@ -173,9 +208,7 @@ def get_queue(
     db: Session = Depends(get_db)
 ):
 
-    songs = db.query(models.Song).all()
-
-    return songs
+    return build_queue_payload(db)
 
 # ==========================================
 # GET CURRENT
@@ -196,15 +229,20 @@ async def add_song(
     db: Session = Depends(get_db)
 ):
 
+    # ======================================
     # BLOCK MULTIPLE SONGS SAME USER
+    # ======================================
 
     existing = db.query(models.Song).filter(
-        models.Song.ownerId == song.ownerId
+        models.Song.ownerId == song.ownerId,
+        models.Song.status != "done",
+        models.Song.status != "cancelled"
     ).first()
 
     if existing:
 
         return {
+            "ok": False,
             "error": "USER_ALREADY_HAS_SONG"
         }
 
@@ -213,7 +251,8 @@ async def add_song(
         artist=song.artist,
         youtubeId=song.youtubeId,
         ownerId=song.ownerId,
-        transpose=song.transpose
+        transpose=song.transpose,
+        status="queued"
     )
 
     db.add(new_song)
@@ -222,11 +261,14 @@ async def add_song(
 
     db.refresh(new_song)
 
-    await manager.broadcast({
-        "type": "QUEUE_UPDATE"
-    })
+    await broadcast_queue(db)
 
-    return new_song
+    return {
+        "ok": True,
+        "song": {
+            "id": new_song.id
+        }
+    }
 
 # ==========================================
 # DELETE SONG
@@ -244,6 +286,7 @@ async def delete_song(
 
     if not song:
         return {
+            "ok": False,
             "error": "SONG_NOT_FOUND"
         }
 
@@ -251,12 +294,40 @@ async def delete_song(
 
     db.commit()
 
-    await manager.broadcast({
-        "type": "QUEUE_UPDATE"
-    })
+    await broadcast_queue(db)
 
     return {
-        "success": True
+        "ok": True
+    }
+
+# ==========================================
+# CANCEL SONG
+# ==========================================
+
+@router.post("/song/{song_id}/cancel")
+async def cancel_song(
+    song_id: int,
+    db: Session = Depends(get_db)
+):
+
+    song = db.query(models.Song).filter(
+        models.Song.id == song_id
+    ).first()
+
+    if not song:
+        return {
+            "ok": False,
+            "error": "SONG_NOT_FOUND"
+        }
+
+    song.status = "cancelled"
+
+    db.commit()
+
+    await broadcast_queue(db)
+
+    return {
+        "ok": True
     }
 
 # ==========================================
@@ -276,7 +347,19 @@ async def update_song(
 
     if not song:
         return {
+            "ok": False,
             "error": "SONG_NOT_FOUND"
+        }
+
+    # ======================================
+    # BLOCK EDIT IF PLAYING
+    # ======================================
+
+    if song.status == "playing":
+
+        return {
+            "ok": False,
+            "error": "SONG_ALREADY_PLAYING"
         }
 
     if data.title:
@@ -293,11 +376,11 @@ async def update_song(
 
     db.commit()
 
-    await manager.broadcast({
-        "type": "QUEUE_UPDATE"
-    })
+    await broadcast_queue(db)
 
-    return song
+    return {
+        "ok": True
+    }
 
 # ==========================================
 # NEXT SONG
@@ -310,38 +393,142 @@ async def next_song(
 
     global current_song
 
-    song = db.query(models.Song).first()
+    # ======================================
+    # FINISH CURRENT PLAYING
+    # ======================================
+
+    playing_song = db.query(models.Song).filter(
+        models.Song.status == "playing"
+    ).first()
+
+    if playing_song:
+
+        playing_song.status = "done"
+
+        db.commit()
+
+    # ======================================
+    # GET NEXT QUEUED
+    # ======================================
+
+    song = db.query(models.Song).filter(
+        models.Song.status == "queued"
+    ).first()
+
+    # ======================================
+    # NO SONGS
+    # ======================================
 
     if not song:
 
         current_song = None
 
         await manager.broadcast({
-            "type": "NO_SONGS"
+            "type": "STOP_VIDEO"
         })
+
+        await broadcast_queue(db)
 
         return {
             "message": "QUEUE_EMPTY"
         }
+
+    # ======================================
+    # SET PLAYING
+    # ======================================
+
+    song.status = "playing"
+
+    db.commit()
 
     current_song = {
         "id": song.id,
         "title": song.title,
         "artist": song.artist,
         "youtubeId": song.youtubeId,
-        "transpose": song.transpose
+        "transpose": song.transpose,
+        "ownerId": song.ownerId
     }
 
-    db.delete(song)
-
-    db.commit()
+    # ======================================
+    # BROADCAST VIDEO
+    # ======================================
 
     await manager.broadcast({
-        "type": "CURRENT_SONG",
+        "type": "LOAD_VIDEO",
         "song": current_song
     })
 
+    await broadcast_queue(db)
+
     return current_song
+
+# ==========================================
+# PLAY NOW
+# ==========================================
+
+@router.post("/play-now/{song_id}")
+async def play_now(
+    song_id: int,
+    db: Session = Depends(get_db)
+):
+
+    global current_song
+
+    # ======================================
+    # RESET CURRENT PLAYING
+    # ======================================
+
+    playing_song = db.query(models.Song).filter(
+        models.Song.status == "playing"
+    ).first()
+
+    if playing_song:
+
+        playing_song.status = "queued"
+
+    # ======================================
+    # FIND SONG
+    # ======================================
+
+    song = db.query(models.Song).filter(
+        models.Song.id == song_id
+    ).first()
+
+    if not song:
+
+        return {
+            "ok": False,
+            "error": "SONG_NOT_FOUND"
+        }
+
+    # ======================================
+    # FORCE PLAY
+    # ======================================
+
+    song.status = "playing"
+
+    db.commit()
+
+    current_song = {
+        "id": song.id,
+        "title": song.title,
+        "artist": song.artist,
+        "youtubeId": song.youtubeId,
+        "transpose": song.transpose,
+        "ownerId": song.ownerId
+    }
+
+    await manager.broadcast({
+        "type": "LOAD_VIDEO",
+        "song": current_song
+    })
+
+    await broadcast_queue(db)
+
+    return {
+        "ok": True
+    }
 
 # ==========================================
 # WEBSOCKET
@@ -353,6 +540,32 @@ async def websocket_endpoint(websocket: WebSocket):
     await manager.connect(websocket)
 
     try:
+
+        # ======================================
+        # SEND INITIAL DATA
+        # ======================================
+
+        db = SessionLocal()
+
+        queue = build_queue_payload(db)
+
+        await websocket.send_json({
+            "type": "queue_update",
+            "queue": queue
+        })
+
+        if current_song:
+
+            await websocket.send_json({
+                "type": "LOAD_VIDEO",
+                "song": current_song
+            })
+
+        db.close()
+
+        # ======================================
+        # KEEP CONNECTION ALIVE
+        # ======================================
 
         while True:
             await websocket.receive_text()
