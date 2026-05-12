@@ -394,3 +394,98 @@ async def remove_song(song_id: str):
     await broadcast_player()
 
     return {"ok": True}
+
+@app.put("/queue/edit/{song_id}")
+async def edit_song(song_id: str, data: dict):
+
+    now = int(time.time() * 1000)
+
+    # verificar que exista
+    cursor = await db.execute("""
+        SELECT * FROM songs WHERE id = ?
+    """, (song_id,))
+
+    song = await cursor.fetchone()
+
+    if not song:
+        raise HTTPException(status_code=404, detail="SONG_NOT_FOUND")
+
+    # actualizar solo campos enviados
+    await db.execute("""
+        UPDATE songs
+        SET title = COALESCE(?, title),
+            artist = COALESCE(?, artist),
+            youtube_id = COALESCE(?, youtube_id),
+            updated_at = ?
+        WHERE id = ?
+    """, (
+        data.get("title"),
+        data.get("artist"),
+        data.get("youtubeId"),
+        now,
+        song_id
+    ))
+
+    await db.commit()
+
+    await broadcast_queue()
+
+    return {
+        "ok": True,
+        "message": "SONG_UPDATED"
+    }
+
+@app.put("/queue/cancel/{song_id}")
+async def cancel_song(song_id: str):
+
+    now = int(time.time() * 1000)
+
+    cursor = await db.execute("""
+        SELECT * FROM songs WHERE id = ?
+    """, (song_id,))
+
+    song = await cursor.fetchone()
+
+    if not song:
+        raise HTTPException(status_code=404, detail="SONG_NOT_FOUND")
+
+    await db.execute("""
+        UPDATE songs
+        SET status = 'cancelled',
+            updated_at = ?
+        WHERE id = ?
+    """, (now, song_id))
+
+    await db.commit()
+
+    # si cancelan la que está sonando → pasar a la siguiente
+    if song[5] == "playing":  # status column
+
+        cursor = await db.execute("""
+            SELECT id FROM songs
+            WHERE status = 'queued'
+            ORDER BY created_at ASC
+            LIMIT 1
+        """)
+
+        nxt = await cursor.fetchone()
+
+        if nxt:
+
+            await db.execute("""
+                UPDATE songs
+                SET status = 'playing',
+                    updated_at = ?
+                WHERE id = ?
+            """, (now, nxt[0]))
+
+            await db.commit()
+
+            await broadcast_player()
+
+    await broadcast_queue()
+
+    return {
+        "ok": True,
+        "message": "SONG_CANCELLED"
+    }
