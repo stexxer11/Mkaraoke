@@ -159,10 +159,18 @@ async def broadcast_player():
 # SEARCH
 # =====================================================
 
+# =====================================================
+# SEARCH
+# =====================================================
+
 @app.get("/search")
 async def search(q: str = Query(...)):
 
+    print("SEARCH QUERY:", q)
+    print("API KEY EXISTS:", bool(API_KEY))
+
     if not API_KEY:
+        print("NO API KEY")
         return []
 
     res = await http_client.get(
@@ -176,9 +184,13 @@ async def search(q: str = Query(...)):
         }
     )
 
+    print("YOUTUBE STATUS:", res.status_code)
+
     data = res.json()
 
-    return [
+    print("YOUTUBE RESPONSE:", json.dumps(data, indent=2))
+
+    results = [
         {
             "youtubeId": i["id"].get("videoId"),
             "title": i["snippet"]["title"],
@@ -188,6 +200,9 @@ async def search(q: str = Query(...)):
         if i["id"].get("videoId")
     ]
 
+    print("FINAL RESULTS:", results)
+
+    return results
 # =====================================================
 # WEBSOCKET
 # =====================================================
