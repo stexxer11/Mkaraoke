@@ -291,7 +291,6 @@ async def add_song(song: SongCreate):
 # =====================================================
 # NEXT SONG
 # =====================================================
-
 @app.post("/queue/next")
 async def next_song():
 
@@ -317,8 +316,20 @@ async def next_song():
             WHERE id = :id
         """, {"now": now, "id": nxt[0]})
 
+        song = get_current()
+
+        await broadcast({
+            "type": "LOAD_VIDEO",
+            "song": song
+        })
+
+    else:
+        # 🔥 NO HAY CANCIONES → TV debe ir a QR
+        await broadcast({
+            "type": "STOP_VIDEO"
+        })
+
     await broadcast({"type": "queue_update", "queue": get_queue()})
-    await broadcast({"type": "LOAD_VIDEO", "song": get_current()})
 
     return {"ok": True}
 
