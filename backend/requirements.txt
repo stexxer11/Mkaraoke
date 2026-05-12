@@ -7,5 +7,5 @@ websockets
 aiofiles
 requests
 python-dotenv
-aiosqlite
 httpx
+psycopg2-binary
