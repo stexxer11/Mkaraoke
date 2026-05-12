@@ -13,7 +13,7 @@ export const searchYouTube = async (query) => {
     return res.data;
 
   } catch (err) {
-    console.log(err);
+    console.log("SEARCH ERROR:", err);
     return [];
   }
 };

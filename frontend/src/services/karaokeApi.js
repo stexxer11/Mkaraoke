@@ -1,101 +1,65 @@
-import api from "./api"
+import api from "./api";
 
 // =========================
 // GET QUEUE
 // =========================
 
 export const getQueue = async () => {
-
-  const res = await api.get("/queue")
-
-  return res.data
-}
+  const res = await api.get("/queue");
+  return res.data;
+};
 
 // =========================
-// ADD SONG
+// ADD SONG (BACKEND: /song)
 // =========================
 
 export const addSongApi = async (song) => {
-
-  const res = await api.post(
-    "/queue/add",
-    song
-  )
-
-  return res.data
-}
+  const res = await api.post("/song", song);
+  return res.data;
+};
 
 // =========================
-// EDIT SONG
+// EDIT SONG (BACKEND: /song/:id)
 // =========================
 
-export const editSongApi = async (
-  id,
-  data
-) => {
-
-  const res = await api.put(
-    `/queue/edit/${id}`,
-    data
-  )
-
-  return res.data
-}
+export const editSongApi = async (id, data) => {
+  const res = await api.put(`/song/${id}`, data);
+  return res.data;
+};
 
 // =========================
-// CANCEL SONG
+// CANCEL SONG (BACKEND: /song/:id/cancel)
 // =========================
 
-export const cancelSongApi = async (
-  id
-) => {
-
-  const res = await api.put(
-    `/queue/cancel/${id}`
-  )
-
-  return res.data
-}
+export const cancelSongApi = async (id) => {
+  const res = await api.post(`/song/${id}/cancel`);
+  return res.data;
+};
 
 // =========================
-// NEXT SONG
+// NEXT SONG (BACKEND: /next)
 // =========================
 
 export const nextSongApi = async () => {
-
-  const res = await api.post(
-    "/queue/next"
-  )
-
-  return res.data
-}
+  const res = await api.post("/next");
+  return res.data;
+};
 
 // =========================
-// PLAY NOW
+// PLAY NOW (BACKEND: /play-now/:id)
 // =========================
 
-export const playNowApi = async (
-  id
-) => {
-
-  const res = await api.post(
-    `/queue/playnow/${id}`
-  )
-
-  return res.data
-}
+export const playNowApi = async (id) => {
+  const res = await api.post(`/play-now/${id}`);
+  return res.data;
+};
 
 // =========================
-// REMOVE SONG
+// REMOVE SONG (NO EXISTE EN BACKEND ACTUAL)
 // =========================
 
-export const removeSongApi = async (
-  id
-) => {
-
-  const res = await api.delete(
-    `/queue/remove/${id}`
-  )
-
-  return res.data
-}
+export const removeSongApi = async (id) => {
+  // equivalente seguro
+  const res = await api.post(`/song/${id}/cancel`);
+  return res.data;
+};
