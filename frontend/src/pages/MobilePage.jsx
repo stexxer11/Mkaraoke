@@ -36,7 +36,7 @@ function MobilePage() {
   const alertOpen = useRef(false)
 
   // =========================
-  // SEARCH
+  // SEARCH YOUTUBE
   // =========================
 
   const debouncedSearch = useMemo(
@@ -54,13 +54,13 @@ function MobilePage() {
           const data = await searchYouTube(value)
           setResults(data || [])
         } catch (err) {
-          console.log(err)
+          console.log("SEARCH ERROR:", err)
           setResults([])
         }
 
         setLoading(false)
 
-      }, 700),
+      }, 600),
     []
   )
 
@@ -74,7 +74,7 @@ function MobilePage() {
   }, [debouncedSearch])
 
   // =========================
-  // MY SONGS (FIXED)
+  // MIS CANCIONES
   // =========================
 
   const mySongs = useMemo(() => {
@@ -87,7 +87,7 @@ function MobilePage() {
   const myActiveSong = useMemo(() => mySongs[0] || null, [mySongs])
 
   // =========================
-  // TURN LOGIC (FIXED)
+  // TURNOS
   // =========================
 
   const turnsLeft = useMemo(() => {
@@ -108,6 +108,7 @@ function MobilePage() {
   }, [queue, myActiveSong])
 
   const isMyTurn = turnsLeft === 0
+
   const isMySongPlaying =
     currentSong?.id === myActiveSong?.id
 
@@ -127,7 +128,7 @@ function MobilePage() {
   }, [isMySongPlaying, editMode])
 
   // =========================
-  // ALERT SYSTEM (FIXED LOCK)
+  // ALERT SYSTEM
   // =========================
 
   useEffect(() => {
@@ -140,9 +141,6 @@ function MobilePage() {
 
     if (alertOpen.current) return
     alertOpen.current = true
-
-    const alertKey =
-      `${myActiveSong.id}-${turnsLeft}-${currentSong?.id}`
 
     // =====================
     // PLAYING
@@ -166,7 +164,6 @@ function MobilePage() {
         background: "#000",
         color: "#06b6d4",
         allowOutsideClick: false,
-        allowEscapeKey: false,
         showConfirmButton: false,
       }).then(() => {
         alertOpen.current = false
@@ -176,7 +173,7 @@ function MobilePage() {
     }
 
     // =====================
-    // TURN READY
+    // TU TURNO
     // =====================
 
     if (isMyTurn) {
@@ -196,18 +193,16 @@ function MobilePage() {
         `,
         background: "#000",
         color: "#06b6d4",
-        allowOutsideClick: false,
-        allowEscapeKey: false,
         showConfirmButton: false,
         showDenyButton: true,
-        denyButtonText: "Editar canción",
+        denyButtonText: "Editar",
         showCancelButton: true,
-        cancelButtonText: "Cancelar turno",
+        cancelButtonText: "Cancelar",
       }).then(async res => {
 
         alertOpen.current = false
 
-        if (res.isDenied && !isMySongPlaying) {
+        if (res.isDenied) {
           setEditMode(true)
           setEditSongData(myActiveSong)
           setSearch("")
@@ -218,28 +213,15 @@ function MobilePage() {
 
           const confirm = await Swal.fire({
             title: "¿Cancelar canción?",
-            text: "Tu turno será eliminado",
             icon: "warning",
             background: "#000",
             color: "#06b6d4",
             showCancelButton: true,
-            confirmButtonText: "Sí, cancelar",
-            cancelButtonText: "Volver",
+            confirmButtonText: "Sí",
           })
 
           if (confirm.isConfirmed) {
             await cancelSong(myActiveSong.id)
-
-            Swal.fire({
-              icon: "success",
-              title: "Turno cancelado",
-              toast: true,
-              position: "top-end",
-              timer: 2000,
-              showConfirmButton: false,
-              background: "#000",
-              color: "#06b6d4",
-            })
           }
         }
 
@@ -249,36 +231,32 @@ function MobilePage() {
     }
 
     // =====================
-    // WAITING
+    // EN COLA
     // =====================
 
     Swal.fire({
-      title: "Tu canción está en cola",
+      title: "En cola",
       html: `
-        <div style="text-align:center;font-size:16px;">
-          <b style="font-size:20px;color:#22d3ee;">
+        <div style="text-align:center;">
+          <b style="color:#22d3ee;">
             ${myActiveSong.title}
           </b>
           <br/><br/>
-          <span style="color:#a1a1aa;">
-            Te faltan <b style="color:white">${turnsLeft}</b> turnos
-          </span>
+          Te faltan <b style="color:white">${turnsLeft}</b> turnos
         </div>
       `,
       background: "#000",
       color: "#06b6d4",
-      allowOutsideClick: false,
-      allowEscapeKey: false,
       showConfirmButton: false,
       showDenyButton: true,
-      denyButtonText: "Editar canción",
+      denyButtonText: "Editar",
       showCancelButton: true,
-      cancelButtonText: "Cancelar turno",
+      cancelButtonText: "Cancelar",
     }).then(async res => {
 
       alertOpen.current = false
 
-      if (res.isDenied && !isMySongPlaying) {
+      if (res.isDenied) {
         setEditMode(true)
         setEditSongData(myActiveSong)
         setSearch("")
@@ -289,28 +267,15 @@ function MobilePage() {
 
         const confirm = await Swal.fire({
           title: "¿Cancelar canción?",
-          text: "Tu turno será eliminado",
           icon: "warning",
           background: "#000",
           color: "#06b6d4",
           showCancelButton: true,
-          confirmButtonText: "Sí, cancelar",
-          cancelButtonText: "Volver",
+          confirmButtonText: "Sí",
         })
 
         if (confirm.isConfirmed) {
           await cancelSong(myActiveSong.id)
-
-          Swal.fire({
-            icon: "success",
-            title: "Turno cancelado",
-            toast: true,
-            position: "top-end",
-            timer: 2000,
-            showConfirmButton: false,
-            background: "#000",
-            color: "#06b6d4",
-          })
         }
       }
 
@@ -327,25 +292,19 @@ function MobilePage() {
   ])
 
   // =========================
-  // ADD SONG (FIXED)
+  // ADD SONG
   // =========================
 
   const handleAddSong = async (song) => {
 
     if (mySongs.length > 0) {
-
       Swal.fire({
         icon: "warning",
-        title: "Ya tienes una canción",
-        text: "Debes esperar tu turno",
+        title: "Ya tienes canción activa",
         toast: true,
-        position: "top-end",
         timer: 2000,
         showConfirmButton: false,
-        background: "#000",
-        color: "#06b6d4",
       })
-
       return
     }
 
@@ -381,48 +340,37 @@ function MobilePage() {
   }
 
   // =========================
-  // RENDER
+  // UI
   // =========================
 
   return (
     <div className="mobile">
 
       <div className="mobile-header">
-        <h1 className="mobile-title">MKaraoke</h1>
-        <p className="mobile-subtitle">
-          Busca tu canción en YouTube
-        </p>
+        <h1>MKaraoke</h1>
+        <p>Busca tu canción</p>
       </div>
 
-      <div className="mobile-search">
-        <input
-          value={search}
-          onChange={(e) => handleSearch(e.target.value)}
-          placeholder={editMode ? "Buscar reemplazo..." : "Buscar canción..."}
-          className="mobile-input"
-        />
-      </div>
+      <input
+        value={search}
+        onChange={(e) => handleSearch(e.target.value)}
+        placeholder={editMode ? "Editar canción..." : "Buscar..."}
+      />
 
       <div className="mobile-results">
 
-        {loading && (
-          <p style={{ color: "#71717a" }}>Buscando...</p>
-        )}
+        {loading && <p>Buscando...</p>}
 
         {results.map(song => (
-          <div key={song.youtubeId} className="song-card">
+          <div key={song.youtubeId}>
+            <img src={`https://img.youtube.com/vi/${song.youtubeId}/hqdefault.jpg`} />
 
-            <div className="song-thumb">
-              <img src={`https://img.youtube.com/vi/${song.youtubeId}/hqdefault.jpg`} />
-            </div>
-
-            <div className="song-info">
-              <p className="song-title">{song.title}</p>
-              <p className="song-artist">{song.artist}</p>
+            <div>
+              <b>{song.title}</b>
+              <p>{song.artist}</p>
             </div>
 
             <button
-              className="song-btn"
               onClick={() =>
                 editMode
                   ? handleReplaceSong(song)
@@ -437,8 +385,8 @@ function MobilePage() {
 
       </div>
 
-      <div className="mobile-footer">
-        Cola global: {queue.length}
+      <div>
+        Cola: {queue.length}
       </div>
 
     </div>
