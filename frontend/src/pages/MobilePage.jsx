@@ -50,7 +50,7 @@ function MobilePage() {
     queue.length >= RULES.MAX_GLOBAL_QUEUE
 
   const showAlert = (config) => {
-    if (Swal.isVisible()) return
+    if (Swal.isVisible()) Swal.close()
     return Swal.fire(config)
   }
 
@@ -65,6 +65,32 @@ function MobilePage() {
   const [editMode, setEditMode] = useState(false)
   const [editSongData, setEditSongData] = useState(null)
 
+  // =====================================================
+  // FILTRO KARAOKE (RESTAURADO)
+  // =====================================================
+  const isKaraokeQuery = (text) => {
+    const keywords = [
+      "karaoke",
+      "instrumental",
+      "lyrics",
+      "letra",
+      "cover",
+      "backing track"
+    ]
+
+    return keywords.some(k =>
+      text.toLowerCase().includes(k)
+    )
+  }
+
+  const forceKaraokeQuery = (text) => {
+    if (isKaraokeQuery(text)) return text
+    return `${text} karaoke instrumental lyrics`
+  }
+
+  // =====================================================
+  // SEARCH
+  // =====================================================
   const debouncedSearch = useMemo(() =>
     debounce(async (value) => {
 
@@ -80,8 +106,7 @@ function MobilePage() {
       setLoading(true)
 
       try {
-        const filteredValue = forceKaraokeQuery(value)
-        const data = await searchYouTube(filteredValue)
+        const data = await searchYouTube(forceKaraokeQuery(value))
         setResults(data || [])
       } catch (err) {
         setResults([])
@@ -89,7 +114,7 @@ function MobilePage() {
 
       setLoading(false)
 
-    }, 700)
+    }, 600)
   , [])
 
   const handleSearch = (value) => {
@@ -101,6 +126,9 @@ function MobilePage() {
     return () => debouncedSearch.cancel()
   }, [debouncedSearch])
 
+  // =====================================================
+  // MY SONG STATE
+  // =====================================================
   const mySongs = useMemo(() =>
     queue.filter(song =>
       song.ownerId === deviceId &&
@@ -129,15 +157,14 @@ function MobilePage() {
   const isMySongPlaying = currentSong?.id === myActiveSong?.id
 
   // =====================================================
-  // ALERT SYSTEM FIX
+  // ALERT SYSTEM FIXED
   // =====================================================
-
   useEffect(() => {
 
     if (!myActiveSong) {
       alertOpen.current = null
       alertLocked.current = false
-      if (Swal.isVisible()) Swal.close()
+      Swal.close()
       return
     }
 
@@ -160,6 +187,9 @@ function MobilePage() {
 
     alertOpen.current = alertKey
 
+    // =====================
+    // PLAYING
+    // =====================
     if (isMySongPlaying) {
 
       alertLocked.current = true
@@ -177,7 +207,10 @@ function MobilePage() {
       return
     }
 
-    Swal.fire({
+    // =====================
+    // QUEUE ALERT
+    // =====================
+    showAlert({
       title: isMyTurn
         ? "Tu turno está listo 🎤"
         : `Te faltan ${turnsLeftValue} turno(s)`,
@@ -202,9 +235,9 @@ function MobilePage() {
 
       showCancelButton: true,
       cancelButtonText: "Cancelar turno",
-
     }).then(res => {
 
+      // EDITAR
       if (res.isDenied && !isMySongPlaying) {
         alertLocked.current = true
         setEditMode(true)
@@ -213,17 +246,18 @@ function MobilePage() {
         setResults([])
       }
 
+      // CANCELAR
       if (res.dismiss === Swal.DismissReason.cancel) {
 
         Swal.fire({
           title: "Eliminar de la cola",
           text: "Esta acción eliminará tu canción",
           icon: "warning",
+          background: "#000",
+          color: "#06b6d4",
           showCancelButton: true,
           confirmButtonText: "Sí, eliminar",
           cancelButtonText: "No",
-          background: "#000",
-          color: "#06b6d4",
         }).then(async (confirm) => {
 
           if (confirm.isConfirmed) {
@@ -254,7 +288,6 @@ function MobilePage() {
   // =====================================================
   // ACTIONS
   // =====================================================
-
   const handleAddSong = async (song) => {
 
     if (isQueueFull(queue)) return
@@ -284,9 +317,8 @@ function MobilePage() {
   }
 
   // =====================================================
-  // UI
+  // UI (SIN CAMBIOS)
   // =====================================================
-
   return (
     <div className="min-h-screen bg-black text-white relative pb-24 overflow-y-auto">
 
