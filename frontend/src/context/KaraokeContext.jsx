@@ -13,7 +13,7 @@ import {
   cancelSongApi,
   nextSongApi,
   playNowApi,
-  registerUserApi,
+  removeSongApi,
 } from "../services/karaokeApi"
 
 const KaraokeContext = createContext()
@@ -23,6 +23,7 @@ export function KaraokeProvider({ children }) {
   // =========================
   // DEVICE ID
   // =========================
+
   const [deviceId] = useState(() => {
     const saved = localStorage.getItem("mk_device_id")
     if (saved) return saved
@@ -33,84 +34,75 @@ export function KaraokeProvider({ children }) {
   })
 
   // =========================
-  // USERNAME
-  // =========================
-  const [username, setUsername] = useState(() => {
-    return localStorage.getItem("mk_username") || ""
-  })
-
-  // =========================
   // STATE
   // =========================
+
   const [queue, setQueue] = useState([])
   const [playerVersion, setPlayerVersion] = useState(0)
 
   const socketRef = useRef(null)
   const reconnectRef = useRef(0)
+  const reconnectTimeoutRef = useRef(null)
 
   // =========================
   // DERIVED STATE
   // =========================
-  const currentSong = useMemo(() => {
-    return queue.find(s => s.status === "playing") || null
-  }, [queue])
 
-  const activeQueue = useMemo(() => {
-    return queue.filter(
-      s => s.status === "queued" || s.status === "playing"
-    )
-  }, [queue])
+  const currentSong = useMemo(
+    () => queue.find(s => s.status === "playing") || null,
+    [queue]
+  )
 
-  const mySongs = useMemo(() => {
-    return activeQueue.filter(
-      s => String(s.ownerId) === String(deviceId)
-    )
-  }, [activeQueue, deviceId])
+  const activeQueue = useMemo(
+    () => queue.filter(s => s.status === "queued" || s.status === "playing"),
+    [queue]
+  )
+
+  const mySongs = useMemo(
+    () => activeQueue.filter(s => String(s.ownerId) === String(deviceId)),
+    [activeQueue, deviceId]
+  )
 
   const hasActiveSong = mySongs.length > 0
 
-  const visibleQueue = useMemo(() => {
-    return queue.filter(
-      s => s.status !== "done" && s.status !== "cancelled"
-    )
-  }, [queue])
+  const visibleQueue = useMemo(
+    () => queue.filter(s => s.status !== "done" && s.status !== "cancelled"),
+    [queue]
+  )
 
   // =========================
-  // WS SAFE SEND
+  // SAFE SEND (ROBUSTO)
   // =========================
+
   const safeSend = (data) => {
     const ws = socketRef.current
-    if (!ws || ws.readyState !== 1) return
+    if (!ws || ws.readyState !== WebSocket.OPEN) return
     ws.send(JSON.stringify(data))
   }
 
   // =========================
   // WEBSOCKET
   // =========================
+
   useEffect(() => {
 
-    let ws
     let shouldReconnect = true
 
     const connect = () => {
 
-      const base = import.meta.env.VITE_WS_URL
+      const ws = new WebSocket(
+        `${import.meta.env.VITE_WS_URL.replace("https", "wss")}/ws`
+      )
 
-      if (!base) {
-        console.error("VITE_WS_URL no definido")
-        return
-      }
-
-      const url = base.startsWith("ws")
-        ? base
-        : base.replace("https", "wss")
-
-      ws = new WebSocket(`${url}/ws`)
       socketRef.current = ws
 
       ws.onopen = () => {
-        console.log("WS CONNECTED")
         reconnectRef.current = 0
+
+        safeSend({
+          type: "GET_STATE",
+          deviceId
+        })
       }
 
       ws.onmessage = (event) => {
@@ -121,10 +113,7 @@ export function KaraokeProvider({ children }) {
             setQueue(data.queue || [])
           }
 
-          if (
-            data.type === "LOAD_VIDEO" ||
-            data.type === "STOP_VIDEO"
-          ) {
+          if (data.type === "LOAD_VIDEO" || data.type === "STOP_VIDEO") {
             setPlayerVersion(v => v + 1)
           }
 
@@ -133,21 +122,18 @@ export function KaraokeProvider({ children }) {
         }
       }
 
-      ws.onerror = (err) => {
-        console.log("WS ERROR", err)
+      ws.onerror = () => {
+        console.log("WS ERROR")
       }
 
       ws.onclose = () => {
 
         if (!shouldReconnect) return
 
-        const timeout = Math.min(
-          1000 * 2 ** reconnectRef.current,
-          10000
-        )
-
+        const timeout = Math.min(1000 * 2 ** reconnectRef.current, 10000)
         reconnectRef.current += 1
-        setTimeout(connect, timeout)
+
+        reconnectTimeoutRef.current = setTimeout(connect, timeout)
       }
     }
 
@@ -155,52 +141,43 @@ export function KaraokeProvider({ children }) {
 
     return () => {
       shouldReconnect = false
-      ws?.close()
+
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current)
+      }
+
+      socketRef.current?.close()
     }
 
   }, [deviceId])
 
   // =========================
-  // REGISTER USER
-  // =========================
-  useEffect(() => {
-
-    const register = async () => {
-      if (!deviceId || !username) return
-
-      try {
-        await registerUserApi(deviceId, username)
-        localStorage.setItem("mk_username", username)
-      } catch (err) {
-        console.log("USER REGISTER ERROR", err)
-      }
-    }
-
-    register()
-
-  }, [deviceId, username])
-
-  // =========================
   // ACTIONS
   // =========================
+
   const addSong = async (songData) => {
-    return addSongApi({
-      ownerId: deviceId,
-      username,
-      title: songData.title,
-      artist: songData.artist,
-      youtubeId: songData.youtubeId,
-    })
+    try {
+      return await addSongApi({
+        ownerId: deviceId,
+        title: songData.title,
+        artist: songData.artist,
+        youtubeId: songData.youtubeId,
+      })
+    } catch (err) {
+      return { ok: false, error: err?.message }
+    }
   }
 
-  const editSong = async (id, data) => editSongApi(id, data)
-  const cancelSong = async (id) => cancelSongApi(id)
-  const playNextSong = async () => nextSongApi()
-  const playNow = async (id) => playNowApi(id)
+  const editSong = async (id, data) => editSongApi(id, data).catch(() => ({ ok: false }))
+  const cancelSong = async (id) => cancelSongApi(id).catch(() => ({ ok: false }))
+  const playNextSong = async () => nextSongApi().catch(console.log)
+  const playNow = async (id) => playNowApi(id).catch(() => ({ ok: false }))
+  const removeSongById = async (id) => removeSongApi(id).catch(console.log)
 
   // =========================
   // PROVIDER
   // =========================
+
   return (
     <KaraokeContext.Provider value={{
 
@@ -212,8 +189,6 @@ export function KaraokeProvider({ children }) {
       playerVersion,
 
       deviceId,
-      username,
-      setUsername,
       mySongs,
       hasActiveSong,
 
@@ -223,6 +198,7 @@ export function KaraokeProvider({ children }) {
 
       playNextSong,
       playNow,
+      removeSongById,
 
       safeSend
 
