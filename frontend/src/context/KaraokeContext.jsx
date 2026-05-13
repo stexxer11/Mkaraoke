@@ -51,7 +51,7 @@ export function KaraokeProvider({ children }) {
   const reconnectTimeoutRef = useRef(null)
 
   // =========================
-  // LOAD USER (FIXED)
+  // LOAD USER (SUPABASE SAFE)
   // =========================
   useEffect(() => {
     let mounted = true
@@ -62,7 +62,6 @@ export function KaraokeProvider({ children }) {
 
         if (!mounted) return
 
-        // 👇 backend ahora lanza 404 => aquí lo manejamos
         if (res?.id) {
           setUser(res)
         } else {
@@ -72,8 +71,10 @@ export function KaraokeProvider({ children }) {
       } catch (err) {
         if (!mounted) return
 
-        // 👇 importante: si es 404 NO es error real
-        if (err?.response?.status === 404) {
+        // 404 = usuario no existe (NORMAL)
+        const status = err?.response?.status
+
+        if (status === 404) {
           setUser(null)
         } else {
           console.log("GET USER ERROR:", err)
@@ -93,7 +94,7 @@ export function KaraokeProvider({ children }) {
   }, [deviceId])
 
   // =========================
-  // REGISTER USER (FIXED)
+  // REGISTER USER
   // =========================
   const registerUser = async (artistName) => {
     try {
@@ -139,9 +140,7 @@ export function KaraokeProvider({ children }) {
   const hasActiveSong = mySongs.length > 0
 
   const visibleQueue = useMemo(
-    () => queue.filter(s =>
-      s.status !== "done" && s.status !== "cancelled"
-    ),
+    () => queue.filter(s => s.status !== "done" && s.status !== "cancelled"),
     [queue]
   )
 
@@ -155,7 +154,7 @@ export function KaraokeProvider({ children }) {
   }
 
   // =========================
-  // WEBSOCKET (FIXED STABLE)
+  // WEBSOCKET
   // =========================
   useEffect(() => {
 
@@ -186,10 +185,7 @@ export function KaraokeProvider({ children }) {
             setQueue(data.queue || [])
           }
 
-          if (
-            data.type === "LOAD_VIDEO" ||
-            data.type === "STOP_VIDEO"
-          ) {
+          if (data.type === "LOAD_VIDEO" || data.type === "STOP_VIDEO") {
             setPlayerVersion(v => v + 1)
           }
 

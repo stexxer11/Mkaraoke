@@ -189,11 +189,12 @@ async def broadcast(data):
     for ws in current:
         try:
             await ws.send_text(msg)
-        except:
+        except Exception:
             dead.add(ws)
 
     async with clients_lock:
-        clients.difference_update(dead)
+        for ws in dead:
+            clients.discard(ws)
 
 
 async def broadcast_queue():
@@ -260,23 +261,26 @@ async def ws(websocket: WebSocket):
     async with clients_lock:
         clients.add(websocket)
 
-    await websocket.send_json({
-        "type": "queue_update",
-        "queue": get_queue()
-    })
-
-    current = get_current()
-    if current:
+    try:
         await websocket.send_json({
-            "type": "LOAD_VIDEO",
-            "song": current
+            "type": "queue_update",
+            "queue": get_queue()
         })
 
-    try:
+        current = get_current()
+        if current:
+            await websocket.send_json({
+                "type": "LOAD_VIDEO",
+                "song": current
+            })
+
         while True:
             await websocket.receive_text()
 
     except WebSocketDisconnect:
+        pass
+
+    finally:
         async with clients_lock:
             clients.discard(websocket)
 

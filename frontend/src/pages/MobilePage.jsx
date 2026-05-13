@@ -17,7 +17,6 @@ function MobilePage() {
     queue,
     addSong,
     editSong,
-    cancelSong,
     deviceId,
     currentSong,
 
@@ -28,9 +27,25 @@ function MobilePage() {
   } = useKaraoke()
 
   // =========================
+  // STATE (MOVIDO ARRIBA)
+  // =========================
+  const [showWelcome, setShowWelcome] = useState(false)
+  const [nameInput, setNameInput] = useState("")
+
+  const [search, setSearch] = useState("")
+  const [results, setResults] = useState([])
+  const [loading, setLoading] = useState(false)
+
+  const [editMode, setEditMode] = useState(false)
+  const [editSongData, setEditSongData] = useState(null)
+
+  const alertOpen = useRef(null)
+  const alertLocked = useRef(false)
+  const lastSearch = useRef(0)
+
+  // =========================
   // LOADING USER SAFE GUARD
   // =========================
-
   if (loadingUser) {
     return (
       <div className="min-h-screen bg-black text-white flex items-center justify-center">
@@ -42,10 +57,6 @@ function MobilePage() {
   // =========================
   // WELCOME STATE
   // =========================
-
-  const [showWelcome, setShowWelcome] = useState(false)
-  const [nameInput, setNameInput] = useState("")
-
   useEffect(() => {
     if (!user) {
       setShowWelcome(true)
@@ -57,7 +68,6 @@ function MobilePage() {
   // =========================
   // RULES
   // =========================
-
   const RULES = {
     MIN_SEARCH_LENGTH: 3,
     MAX_QUEUE_PER_USER: 1,
@@ -91,25 +101,9 @@ function MobilePage() {
     return Swal.fire(config)
   }
 
-  const alertOpen = useRef(null)
-  const alertLocked = useRef(false)
-  const lastSearch = useRef(0)
-
-  // =========================
-  // SEARCH STATE
-  // =========================
-
-  const [search, setSearch] = useState("")
-  const [results, setResults] = useState([])
-  const [loading, setLoading] = useState(false)
-
-  const [editMode, setEditMode] = useState(false)
-  const [editSongData, setEditSongData] = useState(null)
-
   // =========================
   // WELCOME SCREEN
   // =========================
-
   if (showWelcome) {
     return (
       <div className="fixed inset-0 bg-black flex items-center justify-center text-white">
@@ -149,7 +143,6 @@ function MobilePage() {
   // =========================
   // KARAOKE FILTER
   // =========================
-
   const isKaraokeQuery = (text) => {
     const keywords = [
       "karaoke",
@@ -173,7 +166,6 @@ function MobilePage() {
   // =========================
   // SEARCH (DEBOUNCED)
   // =========================
-
   const debouncedSearch = useMemo(() =>
     debounce(async (value) => {
 
@@ -200,129 +192,18 @@ function MobilePage() {
     }, 600)
   , [])
 
+  useEffect(() => {
+    return () => debouncedSearch.cancel()
+  }, [debouncedSearch])
+
   const handleSearch = (value) => {
     setSearch(value)
     debouncedSearch(value)
   }
 
-  useEffect(() => {
-    return () => debouncedSearch.cancel()
-  }, [debouncedSearch])
-
-  // =========================
-  // MY SONG STATE
-  // =========================
-
-  const mySongs = useMemo(() =>
-    queue.filter(song =>
-      song.ownerId === deviceId &&
-      song.status !== "done" &&
-      song.status !== "cancelled"
-    )
-  , [queue, deviceId])
-
-  const myActiveSong = useMemo(() => mySongs[0] || null, [mySongs])
-
-  const turnsLeft = useMemo(() => {
-    if (!myActiveSong) return -1
-
-    const activeQueue = queue.filter(
-      s => s.status === "queued" || s.status === "playing"
-    )
-
-    return activeQueue.findIndex(s =>
-      s.id === myActiveSong.id
-    )
-
-  }, [queue, myActiveSong])
-
-  const isMyTurn = turnsLeft === 0
-  const isMySongPlaying = currentSong?.id === myActiveSong?.id
-
-  // =========================
-  // ALERT SYSTEM
-  // =========================
-
-  useEffect(() => {
-
-    if (!myActiveSong) {
-      alertOpen.current = null
-      alertLocked.current = false
-      Swal.close()
-      return
-    }
-
-    if (alertLocked.current && editMode) return
-
-    const activeQueue = queue.filter(
-      s => s.status === "queued" || s.status === "playing"
-    )
-
-    const position = activeQueue.findIndex(
-      s => s.id === myActiveSong.id
-    )
-
-    const turnsLeftValue = position === -1 ? 0 : position
-
-    const alertKey =
-      `${myActiveSong.id}-${turnsLeftValue}-${currentSong?.id}`
-
-    if (alertOpen.current === alertKey) return
-
-    alertOpen.current = alertKey
-
-    if (isMySongPlaying) {
-
-      alertLocked.current = true
-
-      Swal.fire({
-        title: "Disfruta tu canción 🎤",
-        html: `<b>${myActiveSong.title}</b>`,
-        background: "#000",
-        color: "#06b6d4",
-        showConfirmButton: false,
-        allowOutsideClick: false,
-        allowEscapeKey: false,
-      })
-
-      return
-    }
-
-    showAlert({
-      title: isMyTurn
-        ? "Tu turno está listo 🎤"
-        : `Te faltan ${turnsLeftValue} turno(s)`,
-
-      html: `
-        <b>${myActiveSong.title}</b>
-        <br/>
-        <span style="opacity:0.7;font-size:13px">
-          ${isMyTurn ? "Prepara tu canción" : "En cola de espera"}
-        </span>
-      `,
-
-      background: "#000",
-      color: "#06b6d4",
-      showConfirmButton: false,
-      allowOutsideClick: false,
-      allowEscapeKey: false,
-    })
-
-  }, [
-    queue,
-    currentSong,
-    myActiveSong,
-    turnsLeft,
-    isMyTurn,
-    isMySongPlaying,
-    deviceId,
-    editMode
-  ])
-
   // =========================
   // ACTIONS
   // =========================
-
   const handleAddSong = async (song) => {
     if (isQueueFull(queue)) return
     if (!canAddSong(queue, deviceId)) return
@@ -347,9 +228,80 @@ function MobilePage() {
   }
 
   // =========================
+  // MY SONG STATE (SIMPLIFICADO)
+  // =========================
+  const mySongs = useMemo(() =>
+    queue.filter(song =>
+      song.ownerId === deviceId &&
+      song.status !== "done" &&
+      song.status !== "cancelled"
+    )
+  , [queue, deviceId])
+
+  const myActiveSong = useMemo(() => mySongs[0] || null, [mySongs])
+
+  const turnsLeft = useMemo(() => {
+    if (!myActiveSong) return -1
+
+    const activeQueue = queue.filter(
+      s => s.status === "queued" || s.status === "playing"
+    )
+
+    return activeQueue.findIndex(s =>
+      s.id === myActiveSong.id
+    )
+  }, [queue, myActiveSong])
+
+  const isMyTurn = turnsLeft === 0
+  const isMySongPlaying = currentSong?.id === myActiveSong?.id
+
+  // =========================
+  // ALERT SYSTEM (SIMPLIFICADO)
+  // =========================
+  useEffect(() => {
+
+    if (!myActiveSong) return
+
+    const alertKey = `${myActiveSong.id}-${currentSong?.id}`
+    if (alertOpen.current === alertKey) return
+
+    alertOpen.current = alertKey
+
+    if (isMySongPlaying) {
+      alertLocked.current = true
+
+      Swal.fire({
+        title: "Disfruta tu canción 🎤",
+        html: `<b>${myActiveSong.title}</b>`,
+        background: "#000",
+        color: "#06b6d4",
+        showConfirmButton: false,
+        allowOutsideClick: false,
+        allowEscapeKey: false,
+      })
+
+      return
+    }
+
+    showAlert({
+      title: isMyTurn
+        ? "Tu turno está listo 🎤"
+        : `Esperando turno`,
+
+      html: `<b>${myActiveSong.title}</b>`,
+
+      background: "#000",
+      color: "#06b6d4",
+      showConfirmButton: false,
+      allowOutsideClick: false,
+      allowEscapeKey: false,
+    })
+
+  }, [queue, currentSong, myActiveSong, isMyTurn, isMySongPlaying])
+
+  // =========================
   // UI
   // =========================
-
   return (
     <div className="min-h-screen bg-black text-white relative pb-24 overflow-y-auto">
 
