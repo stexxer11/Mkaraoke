@@ -5,7 +5,7 @@ import MobilePage from "./pages/MobilePage"
 import TvPage from "./pages/TvPage"
 import AdminPage from "./pages/AdminPage"
 
-import { getSocket } from "..src/api/websocket"
+import { getSocket } from "./ws"
 
 function App() {
 
@@ -13,7 +13,7 @@ function App() {
   const [user, setUser] = useState(null)
 
   // =====================================================
-  // 1. WS BOOT GLOBA
+  // 1. WS BOOT GLOBAL
   // =====================================================
   useEffect(() => {
 
