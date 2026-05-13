@@ -23,7 +23,7 @@ function MobilePage() {
   } = useKaraoke()
 
   // =====================================================
-  // 👤 USER STATE (NUEVO)
+  // 👤 USER LOGIN (NUEVO)
   // =====================================================
   const [user, setUser] = useState(null)
 
@@ -63,9 +63,7 @@ function MobilePage() {
     })
   }, [])
 
-  // =====================================================
-  // 🚨 BLOQUEO HASTA LOGIN
-  // =====================================================
+  // 🔒 bloquear app hasta login
   if (!user) return null
 
   // =====================================================
@@ -206,15 +204,12 @@ function MobilePage() {
   const isMySongPlaying = currentSong?.id === myActiveSong?.id
 
   // =====================================================
-  // UI HEADER (CON USER)
+  // UI
   // =====================================================
   return (
     <div className="min-h-screen bg-black text-white relative pb-24 overflow-y-auto">
 
-      <div className="absolute inset-0 pointer-events-none">
-        <div className="absolute w-[600px] h-[600px] bg-cyan-500/10 blur-3xl rounded-full top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" />
-      </div>
-
+      {/* HEADER */}
       <div className="relative text-center pt-8">
         <p className="text-zinc-400 text-sm">
           Hola, {user.name}
