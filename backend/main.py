@@ -125,9 +125,9 @@ def get_user(user_id: str):
     }
 
 
-@app.get("/health")
-def health():
-    return {"status": "ok"}
+@app.get("/status")
+def status():
+    return {"ok": True}
 
 @app.post("/user")
 def create_user(user: UserCreate):

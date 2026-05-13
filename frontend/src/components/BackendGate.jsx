@@ -9,7 +9,7 @@ export default function BackendGate({ children }) {
 
     const checkBackend = async () => {
       try {
-        const res = await fetch(import.meta.env.VITE_API_URL + "/health")
+        const res = await fetch(import.meta.env.VITE_API_URL + "/status")
 
         if (res.ok) {
           setReady(true)
