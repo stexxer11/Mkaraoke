@@ -326,11 +326,11 @@ function MobilePage() {
         <div className="absolute w-[600px] h-[600px] bg-cyan-500/10 blur-3xl rounded-full top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" />
       </div>
 
-      <div className="relative text-center pt-8">
-        <h1 className="text-4xl font-black">
-          M<span className="text-cyan-400">KARAOKE</span>
-        </h1>
-      </div>
+     <div className="fixed top-0 left-0 w-full text-center pt-8 bg-black z-50">
+  <h1 className="text-4xl font-black">
+    M<span className="text-cyan-400">KARAOKE</span>
+  </h1>
+</div>
 
       <div className="relative px-4 mt-5">
         <input
