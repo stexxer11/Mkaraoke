@@ -5,7 +5,7 @@ import MobilePage from "./pages/MobilePage"
 import TvPage from "./pages/TvPage"
 import AdminPage from "./pages/AdminPage"
 
-import { getSocket } from "./ws"
+import { getSocket } from "..src/api/websocket"
 
 function App() {
 
