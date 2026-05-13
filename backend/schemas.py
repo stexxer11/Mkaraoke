@@ -7,7 +7,6 @@ class SongCreate(BaseModel):
     artist: str
     youtubeId: str
     ownerId: str
-    username: str   # NUEVO
     transpose: int = 0
 
 
