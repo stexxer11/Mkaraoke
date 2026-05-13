@@ -20,9 +20,9 @@ const KaraokeContext = createContext()
 
 export function KaraokeProvider({ children }) {
 
-  // =========================
+  // =====================================================
   // DEVICE ID
-  // =========================
+  // =====================================================
 
   const [deviceId] = useState(() => {
     const saved = localStorage.getItem("mk_device_id")
@@ -33,72 +33,77 @@ export function KaraokeProvider({ children }) {
     return id
   })
 
-  // =========================
-  // STATE
-  // =========================
+  // =====================================================
+  // STATE (SOURCE OF TRUTH)
+  // =====================================================
 
   const [queue, setQueue] = useState([])
   const [playerVersion, setPlayerVersion] = useState(0)
 
   const socketRef = useRef(null)
   const reconnectRef = useRef(0)
-  const reconnectTimeoutRef = useRef(null)
 
-  // =========================
-  // DERIVED STATE
-  // =========================
+  // =====================================================
+  // DERIVED STATE (GLOBAL FIX)
+  // =====================================================
 
-  const currentSong = useMemo(
-    () => queue.find(s => s.status === "playing") || null,
-    [queue]
-  )
+  const currentSong = useMemo(() => {
+    return queue.find(s => s.status === "playing") || null
+  }, [queue])
 
-  const activeQueue = useMemo(
-    () => queue.filter(s => s.status === "queued" || s.status === "playing"),
-    [queue]
-  )
+  const activeQueue = useMemo(() => {
+    return queue.filter(
+      s => s.status === "queued" || s.status === "playing"
+    )
+  }, [queue])
 
-  const mySongs = useMemo(
-    () => activeQueue.filter(s => String(s.ownerId) === String(deviceId)),
-    [activeQueue, deviceId]
-  )
+  const mySongs = useMemo(() => {
+    return activeQueue.filter(
+      s => String(s.ownerId) === String(deviceId)
+    )
+  }, [activeQueue, deviceId])
 
   const hasActiveSong = mySongs.length > 0
 
-  const visibleQueue = useMemo(
-    () => queue.filter(s => s.status !== "done" && s.status !== "cancelled"),
-    [queue]
-  )
+  const visibleQueue = useMemo(() => {
+    return queue.filter(
+      s => s.status !== "done" && s.status !== "cancelled"
+    )
+  }, [queue])
 
-  // =========================
-  // SAFE SEND (ROBUSTO)
-  // =========================
+  // =====================================================
+  // SAFE WS SEND
+  // =====================================================
 
   const safeSend = (data) => {
     const ws = socketRef.current
-    if (!ws || ws.readyState !== WebSocket.OPEN) return
+    if (!ws || ws.readyState !== 1) return
     ws.send(JSON.stringify(data))
   }
 
-  // =========================
-  // WEBSOCKET
-  // =========================
+  // =====================================================
+  // WEBSOCKET CONNECTION (FIXED SYNC)
+  // =====================================================
 
   useEffect(() => {
 
+    let ws
     let shouldReconnect = true
 
     const connect = () => {
 
-      const ws = new WebSocket(
+      ws = new WebSocket(
         `${import.meta.env.VITE_WS_URL.replace("https", "wss")}/ws`
       )
 
       socketRef.current = ws
 
       ws.onopen = () => {
+        console.log("WS CONNECTED")
+
         reconnectRef.current = 0
 
+        // sync inicial
         safeSend({
           type: "GET_STATE",
           deviceId
@@ -107,13 +112,25 @@ export function KaraokeProvider({ children }) {
 
       ws.onmessage = (event) => {
         try {
+
           const data = JSON.parse(event.data)
+
+          // =================================================
+          // QUEUE UPDATE (MAIN SOURCE)
+          // =================================================
 
           if (data.type === "queue_update") {
             setQueue(data.queue || [])
           }
 
-          if (data.type === "LOAD_VIDEO" || data.type === "STOP_VIDEO") {
+          // =================================================
+          // VIDEO CONTROL (FORCE RELOAD TV)
+          // =================================================
+
+          if (
+            data.type === "LOAD_VIDEO" ||
+            data.type === "STOP_VIDEO"
+          ) {
             setPlayerVersion(v => v + 1)
           }
 
@@ -122,18 +139,24 @@ export function KaraokeProvider({ children }) {
         }
       }
 
-      ws.onerror = () => {
-        console.log("WS ERROR")
+      ws.onerror = (err) => {
+        console.log("WS ERROR", err)
       }
 
       ws.onclose = () => {
 
         if (!shouldReconnect) return
 
-        const timeout = Math.min(1000 * 2 ** reconnectRef.current, 10000)
+        const timeout = Math.min(
+          1000 * 2 ** reconnectRef.current,
+          10000
+        )
+
         reconnectRef.current += 1
 
-        reconnectTimeoutRef.current = setTimeout(connect, timeout)
+        console.log(`WS RECONNECT IN ${timeout}ms`)
+
+        setTimeout(connect, timeout)
       }
     }
 
@@ -141,19 +164,14 @@ export function KaraokeProvider({ children }) {
 
     return () => {
       shouldReconnect = false
-
-      if (reconnectTimeoutRef.current) {
-        clearTimeout(reconnectTimeoutRef.current)
-      }
-
-      socketRef.current?.close()
+      ws?.close()
     }
 
   }, [deviceId])
 
-  // =========================
+  // =====================================================
   // ACTIONS
-  // =========================
+  // =====================================================
 
   const addSong = async (songData) => {
     try {
@@ -168,38 +186,80 @@ export function KaraokeProvider({ children }) {
     }
   }
 
-  const editSong = async (id, data) => editSongApi(id, data).catch(() => ({ ok: false }))
-  const cancelSong = async (id) => cancelSongApi(id).catch(() => ({ ok: false }))
-  const playNextSong = async () => nextSongApi().catch(console.log)
-  const playNow = async (id) => playNowApi(id).catch(() => ({ ok: false }))
-  const removeSongById = async (id) => removeSongApi(id).catch(console.log)
+  const editSong = async (id, data) => {
+    try {
+      return await editSongApi(id, data)
+    } catch {
+      return { ok: false }
+    }
+  }
 
-  // =========================
+  const cancelSong = async (id) => {
+    try {
+      return await cancelSongApi(id)
+    } catch {
+      return { ok: false }
+    }
+  }
+
+  const playNextSong = async () => {
+    try {
+      return await nextSongApi()
+    } catch (err) {
+      console.log(err)
+    }
+  }
+
+  const playNow = async (id) => {
+    try {
+      return await playNowApi(id)
+    } catch {
+      return { ok: false }
+    }
+  }
+
+  const removeSongById = async (id) => {
+    try {
+      return await removeSongApi(id)
+    } catch (err) {
+      console.log(err)
+    }
+  }
+
+  // =====================================================
   // PROVIDER
-  // =========================
+  // =====================================================
 
   return (
     <KaraokeContext.Provider value={{
 
+      // STATE
       queue,
       visibleQueue,
       activeQueue,
       currentSong,
 
+      // PLAYER
       playerVersion,
 
+      // USER
       deviceId,
       mySongs,
       hasActiveSong,
 
+      // ACTIONS
       addSong,
       editSong,
       cancelSong,
 
+      // PLAYER ACTIONS
       playNextSong,
+
+      // ADMIN ACTIONS
       playNow,
       removeSongById,
 
+      // INTERNAL
       safeSend
 
     }}>
