@@ -13,7 +13,7 @@ function App() {
   const [user, setUser] = useState(null)
 
   // =====================================================
-  // 1. WS BOOT GLOBAL
+  // 1. WS BOOT GLOBA
   // =====================================================
   useEffect(() => {
 
