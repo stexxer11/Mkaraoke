@@ -16,9 +16,6 @@ function MobilePage() {
   const {
     queue,
     addSong,
-    editSong,
-    cancelSong,
-    deviceId: globalDeviceId,
     currentSong,
   } = useKaraoke()
 
@@ -27,7 +24,15 @@ function MobilePage() {
   // =====================================================
   const [user, setUser] = useState(null)
 
+  // FIX: deviceId estable local (NO del WS context)
+  const deviceIdRef = useRef(
+    localStorage.getItem("mk_device_id") || crypto.randomUUID()
+  )
+
   useEffect(() => {
+
+    localStorage.setItem("mk_device_id", deviceIdRef.current)
+
     const savedUser = localStorage.getItem("mk_user")
 
     if (savedUser) {
@@ -39,34 +44,31 @@ function MobilePage() {
       title: "Bienvenido a MKARAOKE",
       text: "Ingresa tu nombre para continuar",
       input: "text",
-      inputPlaceholder: "Tu nombre...",
       allowOutsideClick: false,
-      allowEscapeKey: false,
       confirmButtonText: "Entrar",
-      background: "#000",
-      color: "#06b6d4",
       inputValidator: (value) => {
         if (!value) return "Debes ingresar un nombre"
       }
     }).then((result) => {
-      if (result.isConfirmed) {
 
-        const newUser = {
-          name: result.value,
-          deviceId: globalDeviceId,
-          createdAt: Date.now()
-        }
+      if (!result.isConfirmed) return
 
-        localStorage.setItem("mk_user", JSON.stringify(newUser))
-        setUser(newUser)
+      const newUser = {
+        name: result.value,
+        deviceId: deviceIdRef.current, // FIX ESTABLE
+        createdAt: Date.now()
       }
+
+      localStorage.setItem("mk_user", JSON.stringify(newUser))
+      setUser(newUser)
     })
-  }, [globalDeviceId])
+
+  }, [])
 
   const deviceId = user?.deviceId
 
   // =====================================================
-  // GUARD: evitar render incompleto
+  // GUARD
   // =====================================================
   if (!user || !deviceId) {
     return (
@@ -107,41 +109,12 @@ function MobilePage() {
   const isQueueFull = (queue) =>
     queue.length >= RULES.MAX_GLOBAL_QUEUE
 
-  const alertOpen = useRef(null)
   const lastSearch = useRef(0)
 
   const [search, setSearch] = useState("")
   const [results, setResults] = useState([])
   const [loading, setLoading] = useState(false)
 
-  const [editMode] = useState(false)
-
-  // =====================================================
-  // SEARCH FILTER
-  // =====================================================
-  const isKaraokeQuery = (text) => {
-    const keywords = [
-      "karaoke",
-      "instrumental",
-      "lyrics",
-      "letra",
-      "cover",
-      "backing track"
-    ]
-
-    return keywords.some(k =>
-      text.toLowerCase().includes(k)
-    )
-  }
-
-  const forceKaraokeQuery = (text) => {
-    if (isKaraokeQuery(text)) return text
-    return `${text} karaoke instrumental lyrics`
-  }
-
-  // =====================================================
-  // SEARCH
-  // =====================================================
   const debouncedSearch = useMemo(() =>
     debounce(async (value) => {
 
@@ -157,15 +130,15 @@ function MobilePage() {
       setLoading(true)
 
       try {
-        const data = await searchYouTube(forceKaraokeQuery(value))
+        const data = await searchYouTube(value + " karaoke")
         setResults(data || [])
-      } catch (err) {
+      } catch {
         setResults([])
       }
 
       setLoading(false)
 
-    }, 600)
+    }, 500)
   , [])
 
   const handleSearch = (value) => {
@@ -178,11 +151,9 @@ function MobilePage() {
   }, [debouncedSearch])
 
   // =====================================================
-  // MY SONGS (FIX CRÍTICO)
+  // MY SONGS
   // =====================================================
   const mySongs = useMemo(() => {
-    if (!deviceId) return []
-
     return queue.filter(song =>
       song.ownerId === deviceId &&
       song.status !== "done" &&
@@ -190,42 +161,20 @@ function MobilePage() {
     )
   }, [queue, deviceId])
 
-  const myActiveSong = useMemo(
-    () => mySongs[0] || null,
-    [mySongs]
-  )
-
-  const turnsLeft = useMemo(() => {
-    if (!myActiveSong) return -1
-
-    const activeQueue = queue.filter(
-      s => s.status === "queued" || s.status === "playing"
-    )
-
-    return activeQueue.findIndex(s =>
-      s.id === myActiveSong.id
-    )
-
-  }, [queue, myActiveSong])
-
-  const isMyTurn = turnsLeft === 0
-  const isMySongPlaying = currentSong?.id === myActiveSong?.id
-
   // =====================================================
   // ADD SONG
   // =====================================================
   const handleAddSong = async (song) => {
 
-    const ownerId = deviceId
-    if (!ownerId) return
+    if (!deviceId) return
 
     if (isQueueFull(queue)) return
-    if (!canAddSong(queue, ownerId)) return
-    if (isDuplicateSong(queue, song.youtubeId, ownerId)) return
+    if (!canAddSong(queue, deviceId)) return
+    if (isDuplicateSong(queue, song.youtubeId, deviceId)) return
 
     await addSong({
       ...song,
-      ownerId
+      ownerId: deviceId
     })
 
     setSearch("")
@@ -236,36 +185,28 @@ function MobilePage() {
   // UI
   // =====================================================
   return (
-    <div className="min-h-screen bg-black text-white relative pb-24 overflow-y-auto">
+    <div className="min-h-screen bg-black text-white pb-24">
 
-      {/* HEADER */}
-      <div className="relative text-center pt-8">
-        <p className="text-zinc-400 text-sm">
-          Hola, {user.name}
-        </p>
-
-        <h1 className="text-4xl font-black">
-          M<span className="text-cyan-400">KARAOKE</span>
-        </h1>
+      <div className="text-center pt-8">
+        <p className="text-zinc-400 text-sm">Hola, {user.name}</p>
+        <h1 className="text-4xl font-black">MKARAOKE</h1>
       </div>
 
-      {/* SEARCH */}
-      <div className="relative px-4 mt-5">
+      <div className="px-4 mt-5">
         <input
           value={search}
           onChange={(e) => handleSearch(e.target.value)}
-          placeholder={editMode ? "Buscar reemplazo..." : "Buscar canción..."}
-          className="w-full px-4 py-4 text-base rounded-xl bg-black/60 border border-cyan-500/20 outline-none"
+          className="w-full px-4 py-4 bg-black/60 border border-cyan-500/20 rounded-xl"
+          placeholder="Buscar canción..."
         />
       </div>
 
-      {/* RESULTS */}
-      <div className="relative px-4 mt-5 space-y-3">
+      <div className="px-4 mt-5 space-y-3">
 
         {loading && <p className="text-zinc-400">Buscando...</p>}
 
         {results.map(song => (
-          <div key={song.youtubeId} className="flex items-center gap-3 p-3 bg-black/60 rounded-xl">
+          <div key={song.youtubeId} className="flex gap-3 p-3 bg-black/60 rounded-xl">
 
             <img
               src={`https://img.youtube.com/vi/${song.youtubeId}/hqdefault.jpg`}
@@ -277,10 +218,7 @@ function MobilePage() {
               <p className="text-xs text-zinc-400">{song.artist}</p>
             </div>
 
-            <button
-              className="px-4 py-2 bg-cyan-500 text-black rounded-lg text-lg active:scale-95"
-              onClick={() => handleAddSong(song)}
-            >
+            <button onClick={() => handleAddSong(song)}>
               +
             </button>
 
@@ -289,8 +227,7 @@ function MobilePage() {
 
       </div>
 
-      {/* FOOTER */}
-      <div className="fixed bottom-0 left-0 w-full bg-black/90 text-center py-3 text-zinc-500 border-t border-zinc-800">
+      <div className="fixed bottom-0 w-full bg-black/90 text-center py-3 text-zinc-500">
         Cola global: {queue.length}
       </div>
 

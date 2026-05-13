@@ -5,20 +5,41 @@ if (!WS_URL) {
 }
 
 let socket = null
+let reconnectTimeout = null
 
-export function getSocket() {
-  if (!socket || socket.readyState === WebSocket.CLOSED) {
-    socket = new WebSocket(
-      `${WS_URL.replace("https", "wss").replace("http", "ws")}/ws`
-    )
+export function getSocket(onReady, onClose) {
+  if (socket && socket.readyState === WebSocket.OPEN) {
+    return socket
+  }
+
+  socket = new WebSocket(
+    `${WS_URL.replace("https", "wss").replace("http", "ws")}/ws`
+  )
+
+  socket.onopen = () => {
+    console.log("WS conectado")
+    onReady?.()
+  }
+
+  socket.onclose = () => {
+    console.log("WS cerrado")
+
+    onClose?.()
+
+    reconnectTimeout = setTimeout(() => {
+      getSocket(onReady, onClose)
+    }, 2000)
+  }
+
+  socket.onerror = () => {
+    socket?.close()
   }
 
   return socket
 }
 
 export function closeSocket() {
-  if (socket) {
-    socket.close()
-    socket = null
-  }
+  if (reconnectTimeout) clearTimeout(reconnectTimeout)
+  socket?.close()
+  socket = null
 }
