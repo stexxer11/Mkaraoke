@@ -10,7 +10,7 @@ import Swal from "sweetalert2"
 
 import { useKaraoke } from "../context/KaraokeContext"
 import { searchYouTube } from "../services/youtubeApi"
-import { registerUserApi } from "../services/api"
+import { registerUserApi } from "../services/karaokeApi"
 
 function MobilePage() {
 
