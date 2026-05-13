@@ -34,7 +34,7 @@ function MobilePage() {
   const [username, setUsername] = useState("")
   const [userLoaded, setUserLoaded] = useState(false)
   const welcomeShown = useRef(false)
-   console.log("deviceId:", deviceId)
+
   // ================= INIT USER (SWEETALERT) =================
   useEffect(() => {
 
