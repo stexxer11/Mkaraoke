@@ -18,12 +18,12 @@ function MobilePage() {
     addSong,
     editSong,
     cancelSong,
-    deviceId,
+    deviceId: globalDeviceId,
     currentSong,
   } = useKaraoke()
 
   // =====================================================
-  // 👤 USER LOGIN (NUEVO Y COMPLETO)
+  // USER
   // =====================================================
   const [user, setUser] = useState(null)
 
@@ -53,7 +53,7 @@ function MobilePage() {
 
         const newUser = {
           name: result.value,
-          deviceId, // 👈 importante para identificar dispositivo
+          deviceId: globalDeviceId,
           createdAt: Date.now()
         }
 
@@ -61,10 +61,20 @@ function MobilePage() {
         setUser(newUser)
       }
     })
-  }, [deviceId])
+  }, [globalDeviceId])
 
-  // 🔒 bloquear app hasta login
-  if (!user) return null
+  const deviceId = user?.deviceId
+
+  // =====================================================
+  // GUARD: evitar render incompleto
+  // =====================================================
+  if (!user || !deviceId) {
+    return (
+      <div className="min-h-screen bg-black text-white flex items-center justify-center">
+        Cargando usuario...
+      </div>
+    )
+  }
 
   // =====================================================
   // RULES
@@ -86,9 +96,10 @@ function MobilePage() {
 
   const canAddSong = (queue, ownerId) => {
     const mySongs = queue.filter(
-      s => s.ownerId === ownerId &&
-      s.status !== "done" &&
-      s.status !== "cancelled"
+      s =>
+        s.ownerId === ownerId &&
+        s.status !== "done" &&
+        s.status !== "cancelled"
     )
     return mySongs.length < RULES.MAX_QUEUE_PER_USER
   }
@@ -96,24 +107,17 @@ function MobilePage() {
   const isQueueFull = (queue) =>
     queue.length >= RULES.MAX_GLOBAL_QUEUE
 
-  const showAlert = (config) => {
-    if (Swal.isVisible()) Swal.close()
-    return Swal.fire(config)
-  }
-
   const alertOpen = useRef(null)
-  const alertLocked = useRef(false)
   const lastSearch = useRef(0)
 
   const [search, setSearch] = useState("")
   const [results, setResults] = useState([])
   const [loading, setLoading] = useState(false)
 
-  const [editMode, setEditMode] = useState(false)
-  const [editSongData, setEditSongData] = useState(null)
+  const [editMode] = useState(false)
 
   // =====================================================
-  // FILTRO KARAOKE
+  // SEARCH FILTER
   // =====================================================
   const isKaraokeQuery = (text) => {
     const keywords = [
@@ -174,20 +178,24 @@ function MobilePage() {
   }, [debouncedSearch])
 
   // =====================================================
-  // MY SONG STATE
+  // MY SONGS (FIX CRÍTICO)
   // =====================================================
-  const mySongs = useMemo(() =>
-    queue.filter(song =>
-      song.ownerId === user.deviceId &&
+  const mySongs = useMemo(() => {
+    if (!deviceId) return []
+
+    return queue.filter(song =>
+      song.ownerId === deviceId &&
       song.status !== "done" &&
       song.status !== "cancelled"
     )
-  , [queue, user.deviceId])
+  }, [queue, deviceId])
 
-  const myActiveSong = useMemo(() => mySongs[0] || null, [mySongs])
+  const myActiveSong = useMemo(
+    () => mySongs[0] || null,
+    [mySongs]
+  )
 
   const turnsLeft = useMemo(() => {
-
     if (!myActiveSong) return -1
 
     const activeQueue = queue.filter(
@@ -208,7 +216,8 @@ function MobilePage() {
   // =====================================================
   const handleAddSong = async (song) => {
 
-    const ownerId = user.deviceId
+    const ownerId = deviceId
+    if (!ownerId) return
 
     if (isQueueFull(queue)) return
     if (!canAddSong(queue, ownerId)) return
