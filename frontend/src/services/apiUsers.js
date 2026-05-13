@@ -1,4 +1,4 @@
-import { supabase } from "../supabaseClient"
+import { supabase } from "../api"
 
 export const registerUserApi = async (deviceId, name) => {
   const { data, error } = await supabase
