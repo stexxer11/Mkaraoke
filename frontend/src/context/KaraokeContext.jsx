@@ -13,7 +13,6 @@ import {
   cancelSongApi,
   nextSongApi,
   playNowApi,
-  removeSongApi,
   registerUserApi,
 } from "../services/karaokeApi"
 
@@ -21,10 +20,9 @@ const KaraokeContext = createContext()
 
 export function KaraokeProvider({ children }) {
 
-  // =====================================================
+  // =========================
   // DEVICE ID
-  // =====================================================
-
+  // =========================
   const [deviceId] = useState(() => {
     const saved = localStorage.getItem("mk_device_id")
     if (saved) return saved
@@ -34,28 +32,25 @@ export function KaraokeProvider({ children }) {
     return id
   })
 
-  // =====================================================
-  // USER STATE (NUEVO)
-  // =====================================================
-
+  // =========================
+  // USERNAME
+  // =========================
   const [username, setUsername] = useState(() => {
     return localStorage.getItem("mk_username") || ""
   })
 
-  // =====================================================
+  // =========================
   // STATE
-  // =====================================================
-
+  // =========================
   const [queue, setQueue] = useState([])
   const [playerVersion, setPlayerVersion] = useState(0)
 
   const socketRef = useRef(null)
   const reconnectRef = useRef(0)
 
-  // =====================================================
+  // =========================
   // DERIVED STATE
-  // =====================================================
-
+  // =========================
   const currentSong = useMemo(() => {
     return queue.find(s => s.status === "playing") || null
   }, [queue])
@@ -80,20 +75,18 @@ export function KaraokeProvider({ children }) {
     )
   }, [queue])
 
-  // =====================================================
-  // SAFE WS SEND
-  // =====================================================
-
+  // =========================
+  // WS SAFE SEND
+  // =========================
   const safeSend = (data) => {
     const ws = socketRef.current
     if (!ws || ws.readyState !== 1) return
     ws.send(JSON.stringify(data))
   }
 
-  // =====================================================
+  // =========================
   // WEBSOCKET
-  // =====================================================
-
+  // =========================
   useEffect(() => {
 
     let ws
@@ -101,10 +94,18 @@ export function KaraokeProvider({ children }) {
 
     const connect = () => {
 
-      ws = new WebSocket(
-        `${import.meta.env.VITE_WS_URL.replace("https", "wss")}/ws`
-      )
+      const base = import.meta.env.VITE_WS_URL
 
+      if (!base) {
+        console.error("VITE_WS_URL no definido")
+        return
+      }
+
+      const url = base.startsWith("ws")
+        ? base
+        : base.replace("https", "wss")
+
+      ws = new WebSocket(`${url}/ws`)
       socketRef.current = ws
 
       ws.onopen = () => {
@@ -146,7 +147,6 @@ export function KaraokeProvider({ children }) {
         )
 
         reconnectRef.current += 1
-
         setTimeout(connect, timeout)
       }
     }
@@ -160,15 +160,13 @@ export function KaraokeProvider({ children }) {
 
   }, [deviceId])
 
-  // =====================================================
-  // REGISTRO DE USUARIO (NUEVO CRÍTICO)
-  // =====================================================
-
+  // =========================
+  // REGISTER USER
+  // =========================
   useEffect(() => {
 
     const register = async () => {
-      if (!deviceId) return
-      if (!username) return
+      if (!deviceId || !username) return
 
       try {
         await registerUserApi(deviceId, username)
@@ -182,100 +180,50 @@ export function KaraokeProvider({ children }) {
 
   }, [deviceId, username])
 
-  // =====================================================
+  // =========================
   // ACTIONS
-  // =====================================================
-
+  // =========================
   const addSong = async (songData) => {
-    try {
-      return await addSongApi({
-        ownerId: deviceId,
-        username: username,   // 🔥 FIX IMPORTANTE
-        title: songData.title,
-        artist: songData.artist,
-        youtubeId: songData.youtubeId,
-      })
-    } catch (err) {
-      return { ok: false, error: err?.message }
-    }
+    return addSongApi({
+      ownerId: deviceId,
+      username,
+      title: songData.title,
+      artist: songData.artist,
+      youtubeId: songData.youtubeId,
+    })
   }
 
-  const editSong = async (id, data) => {
-    try {
-      return await editSongApi(id, data)
-    } catch {
-      return { ok: false }
-    }
-  }
+  const editSong = async (id, data) => editSongApi(id, data)
+  const cancelSong = async (id) => cancelSongApi(id)
+  const playNextSong = async () => nextSongApi()
+  const playNow = async (id) => playNowApi(id)
 
-  const cancelSong = async (id) => {
-    try {
-      return await cancelSongApi(id)
-    } catch {
-      return { ok: false }
-    }
-  }
-
-  const playNextSong = async () => {
-    try {
-      return await nextSongApi()
-    } catch (err) {
-      console.log(err)
-    }
-  }
-
-  const playNow = async (id) => {
-    try {
-      return await playNowApi(id)
-    } catch {
-      return { ok: false }
-    }
-  }
-
-  const removeSongById = async (id) => {
-    try {
-      return await removeSongApi(id)
-    } catch (err) {
-      console.log(err)
-    }
-  }
-
-  // =====================================================
+  // =========================
   // PROVIDER
-  // =====================================================
-
+  // =========================
   return (
     <KaraokeContext.Provider value={{
 
-      // STATE
       queue,
       visibleQueue,
       activeQueue,
       currentSong,
 
-      // PLAYER
       playerVersion,
 
-      // USER
       deviceId,
       username,
       setUsername,
       mySongs,
       hasActiveSong,
 
-      // ACTIONS
       addSong,
       editSong,
       cancelSong,
 
-      // PLAYER ACTIONS
       playNextSong,
-
-      // ADMIN ACTIONS
       playNow,
-      removeSongById,
 
-      // INTERNAL
       safeSend
 
     }}>

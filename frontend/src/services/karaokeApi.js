@@ -1,49 +1,67 @@
 import { api } from "./api"
 import { safeRequest } from "./safeRequest"
 
-/* =========================
-   QUEUE
-========================= */
+// =========================
+// QUEUE
+// =========================
 
-export const getQueue = async () =>
-  safeRequest(api.get("/queue/state"), "GET_QUEUE")
+export const getQueueApi = async () => {
+  return safeRequest(api.get("/queue/state"), "GET_QUEUE")
+}
 
-export const addSongApi = async (song) =>
-  safeRequest(api.post("/queue/add", song), "ADD_SONG")
+// =========================
+// ADD SONG
+// =========================
+
+export const addSongApi = async (song) => {
+  return safeRequest(api.post("/queue/add", song), "ADD_SONG")
+}
+
+// =========================
+// EDIT SONG
+// =========================
 
 export const editSongApi = async (id, data) => {
   if (!id) throw new Error("EDIT_SONG: MISSING_ID")
 
-  return safeRequest(
-    api.put(`/queue/edit/${id}`, data),
-    "EDIT_SONG"
-  )
+  return safeRequest(api.put(`/queue/edit/${id}`, data), "EDIT_SONG")
 }
+
+// =========================
+// CANCEL SONG
+// =========================
 
 export const cancelSongApi = async (id) => {
   if (!id) throw new Error("CANCEL_SONG: MISSING_ID")
 
-  return safeRequest(
-    api.put(`/queue/cancel/${id}`),
-    "CANCEL_SONG"
-  )
+  return safeRequest(api.put(`/queue/cancel/${id}`), "CANCEL_SONG")
 }
 
-export const nextSongApi = async () =>
-  safeRequest(api.post("/queue/next"), "NEXT_SONG")
+// =========================
+// NEXT SONG
+// =========================
+
+export const nextSongApi = async () => {
+  return safeRequest(api.post("/queue/next"), "NEXT_SONG")
+}
+
+// =========================
+// PLAY NOW
+// =========================
 
 export const playNowApi = async (id) => {
   if (!id) throw new Error("PLAY_NOW: MISSING_ID")
 
-  return safeRequest(
-    api.post(`/queue/playnow/${id}`),
-    "PLAY_NOW"
-  )
+  return safeRequest(api.post(`/queue/playnow/${id}`), "PLAY_NOW")
 }
 
-/* =========================
-   USERS (SIN SUPABASE DIRECTO)
-========================= */
+// ❌ IMPORTANTE: NO EXISTE EN BACKEND
+// lo elimino para evitar crash build
+// export const removeSongApi = ...
+
+// =========================
+// REGISTER USER (FASTAPI REAL)
+// =========================
 
 export const registerUserApi = async (deviceId, name) => {
   return safeRequest(
