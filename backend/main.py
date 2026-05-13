@@ -181,29 +181,39 @@ async def search(q: str = Query(...)):
     if not API_KEY:
         return []
 
-    res = await http_client.get(
-        "https://www.googleapis.com/youtube/v3/search",
-        params={
-            "part": "snippet",
-            "type": "video",
-            "maxResults": 10,
-            "q": q,
-            "key": API_KEY
-        }
-    )
+    query = q.strip()
 
-    data = res.json()
+    # 🚨 seguridad básica: mínimo 3 letras
+    if len(query) < 3:
+        return []
 
-    return [
-        {
-            "youtubeId": i["id"].get("videoId"),
-            "title": i["snippet"]["title"],
-            "artist": i["snippet"]["channelTitle"]
-        }
-        for i in data.get("items", [])
-        if i["id"].get("videoId")
-    ]
+    try:
+        res = await http_client.get(
+            "https://www.googleapis.com/youtube/v3/search",
+            params={
+                "part": "snippet",
+                "type": "video",
+                "maxResults": 10,
+                "q": query,
+                "key": API_KEY
+            }
+        )
 
+        data = res.json()
+
+        return [
+            {
+                "youtubeId": item["id"].get("videoId"),
+                "title": item["snippet"]["title"],
+                "artist": item["snippet"]["channelTitle"]
+            }
+            for item in data.get("items", [])
+            if item["id"].get("videoId")
+        ]
+
+    except Exception as e:
+        print("YouTube API ERROR:", e)
+        return []
 # =====================================================
 # WEBSOCKET
 # =====================================================
