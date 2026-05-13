@@ -98,46 +98,48 @@ def root():
 # SEARCH
 # =====================================================
 
+# =====================================================
+# YOUTUBE SEARCH
+# =====================================================
+
 @app.get("/search")
 async def search(q: str = Query(...)):
 
-    print("SEARCH QUERY:", q)
-    print("API KEY EXISTS:", bool(API_KEY))
-
     if not API_KEY:
-        print("NO API KEY")
         return []
 
-    res = await http_client.get(
-        "https://www.googleapis.com/youtube/v3/search",
-        params={
-            "part": "snippet",
-            "type": "video",
-            "maxResults": 10,
-            "q": q,
-            "key": API_KEY
-        }
-    )
+    try:
+        res = await http_client.get(
+            "https://www.googleapis.com/youtube/v3/search",
+            params={
+                "part": "snippet",
+                "type": "video",
+                "maxResults": 10,
+                "q": q,
+                "key": API_KEY
+            }
+        )
 
-    print("YOUTUBE STATUS:", res.status_code)
+        data = res.json()
 
-    data = res.json()
+        results = []
 
-    print("YOUTUBE RESPONSE:", json.dumps(data, indent=2))
+        for item in data.get("items", []):
+            vid = item["id"].get("videoId")
+            if not vid:
+                continue
 
-    results = [
-        {
-            "youtubeId": i["id"].get("videoId"),
-            "title": i["snippet"]["title"],
-            "artist": i["snippet"]["channelTitle"]
-        }
-        for i in data.get("items", [])
-        if i["id"].get("videoId")
-    ]
+            results.append({
+                "youtubeId": vid,
+                "title": item["snippet"]["title"],
+                "artist": item["snippet"]["channelTitle"]
+            })
 
-    print("FINAL RESULTS:", results)
+        return results
 
-    return results
+    except Exception as e:
+        print("SEARCH ERROR:", e)
+        return []
 
 # =====================================================
 # HELPERS (SQL RAW)
