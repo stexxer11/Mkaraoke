@@ -33,11 +33,14 @@ function MobilePage() {
   // ================= USER STATE =================
   const [username, setUsername] = useState("")
   const [userLoaded, setUserLoaded] = useState(false)
-  const [showNameInput, setShowNameInput] = useState(false)
-  const [tempName, setTempName] = useState("")
+  const [isFirstTime, setIsFirstTime] = useState(false)
 
-  // 🔥 CARGAR USUARIO DESDE SUPABASE
+  // ================= ALERT REF =================
+  const welcomeShown = useRef(false)
+
+  // ================= INIT USER =================
   useEffect(() => {
+
     const initUser = async () => {
       if (!deviceId) return
 
@@ -47,37 +50,69 @@ function MobilePage() {
         .eq("device_id", deviceId)
         .maybeSingle()
 
-      if (data) {
-        setUsername(data.name)
-        setUserLoaded(true)
-      } else {
-        setUserLoaded(false)
-        setShowNameInput(true)
+      // ================= FIRST TIME USER =================
+      if (!data) {
+
+        setIsFirstTime(true)
+
+        const { value: name } = await Swal.fire({
+          title: "🎤 Bienvenido al Karaoke",
+          text: "Ingresa tu nombre artístico",
+          input: "text",
+          inputPlaceholder: "Ej: DJ Rolando",
+          background: "#000",
+          color: "#06b6d4",
+          confirmButtonText: "Entrar",
+          allowOutsideClick: false
+        })
+
+        if (name) {
+
+          await supabase
+            .from("users")
+            .insert([
+              {
+                device_id: deviceId,
+                name: name
+              }
+            ])
+
+          setUsername(name)
+          setUserLoaded(true)
+
+          Swal.fire({
+            title: "Listo 🎉",
+            text: `Prepárate para brillar, ${name}`,
+            background: "#000",
+            color: "#06b6d4",
+            timer: 2000,
+            showConfirmButton: false
+          })
+        }
+
+        return
+      }
+
+      // ================= USER EXISTS =================
+      setUsername(data.name)
+      setUserLoaded(true)
+
+      if (!welcomeShown.current) {
+        welcomeShown.current = true
+
+        Swal.fire({
+          title: "😂 Bienvenido de nuevo artista",
+          html: `<b>Hola ${data.name}</b><br/>el escenario te extrañaba`,
+          background: "#000",
+          color: "#06b6d4",
+          showConfirmButton: false,
+          timer: 2200
+        })
       }
     }
 
     initUser()
   }, [deviceId])
-
-  // 🔥 CREAR USUARIO EN SUPABASE
-  const saveUser = async () => {
-    if (!tempName.trim()) return
-
-    const { error } = await supabase
-      .from("users")
-      .insert([
-        {
-          device_id: deviceId,
-          name: tempName
-        }
-      ])
-
-    if (!error) {
-      setUsername(tempName)
-      setUserLoaded(true)
-      setShowNameInput(false)
-    }
-  }
 
   // ================= SONG RULES =================
   const isDuplicateSong = (queue, youtubeId, deviceId) =>
@@ -115,16 +150,6 @@ function MobilePage() {
 
   const [editMode, setEditMode] = useState(false)
   const [editSongData, setEditSongData] = useState(null)
-
-  // ================= HEADER USER =================
-  const HeaderUser = () => (
-    userLoaded && (
-      <div className="text-center mt-3">
-        <p className="text-zinc-400 text-sm">Hola</p>
-        <p className="text-cyan-400 font-bold text-lg">{username}</p>
-      </div>
-    )
-  )
 
   // ================= KARAOKE FILTER =================
   const isKaraokeQuery = (text) => {
@@ -260,13 +285,7 @@ function MobilePage() {
         ? "Tu turno está listo 🎤"
         : `Te faltan ${turnsLeftValue} turno(s)`,
 
-      html: `
-        <b>${myActiveSong.title}</b>
-        <br/>
-        <span style="opacity:0.7;font-size:13px">
-          ${isMyTurn ? "Prepara tu canción" : "En cola de espera"}
-        </span>
-      `,
+      html: `<b>${myActiveSong.title}</b>`,
 
       background: "#000",
       color: "#06b6d4",
@@ -282,8 +301,6 @@ function MobilePage() {
       if (res.isDenied) {
         setEditMode(true)
         setEditSongData(myActiveSong)
-        setSearch("")
-        setResults([])
       }
 
       if (res.dismiss === Swal.DismissReason.cancel) {
@@ -323,30 +340,18 @@ function MobilePage() {
   return (
     <div className="min-h-screen bg-black text-white pb-24">
 
-      {/* INPUT NOMBRE */}
-      {showNameInput && (
-        <div className="p-4 text-center">
-          <input
-            className="p-2 text-black"
-            placeholder="Tu nombre"
-            value={tempName}
-            onChange={(e) => setTempName(e.target.value)}
-          />
-          <button
-            onClick={saveUser}
-            className="ml-2 bg-cyan-500 text-black px-4 py-2"
-          >
-            Guardar
-          </button>
-        </div>
-      )}
-
       <div className="text-center pt-8">
         <h1 className="text-4xl font-black">
           M<span className="text-cyan-400">KARAOKE</span>
         </h1>
+      </div>
 
-        <HeaderUser />
+      <div className="text-center mt-3">
+        {userLoaded && (
+          <h2 className="text-cyan-400 font-bold">
+            Hola artista {username} 🎤
+          </h2>
+        )}
       </div>
 
       <div className="px-4 mt-5">
@@ -385,10 +390,6 @@ function MobilePage() {
           </div>
         ))}
 
-      </div>
-
-      <div className="fixed bottom-0 w-full text-center p-3 border-t border-zinc-800">
-        Cola: {queue.length}
       </div>
 
     </div>
