@@ -23,7 +23,8 @@ function MobilePage() {
 
     user,
     loadingUser,
-    registerUser
+    registerUser,
+    getUser // 👈 SOLO AGREGADO (NECESARIO)
   } = useKaraoke()
 
   // =========================
@@ -44,7 +45,7 @@ function MobilePage() {
   const alertShown = useRef(false)
 
   // =========================
-  // RULES
+  // RULES (NO TOCADO)
   // =========================
   const RULES = {
     MIN_SEARCH_LENGTH: 3,
@@ -81,72 +82,78 @@ function MobilePage() {
   }
 
   // =========================
-  // USER CONTROL
+  // 🔥 FIX USER CONTROL (CORREGIDO)
   // =========================
   useEffect(() => {
 
     if (loadingUser) return
 
-    // NO USER
-    if (!user || !user.artistName) {
+    const init = async () => {
 
-      setForceRegister(true)
-      setUserReady(false)
+      try {
+        const u = await getUser(deviceId)
 
-      if (!alertShown.current) {
+        if (u?.artistName) {
+          setUserReady(true)
+          setForceRegister(false)
+          return
+        }
 
-        alertShown.current = true
+      } catch (err) {
+        // 👇 SOLO SI NO EXISTE
+        if (!alertShown.current) {
 
-        Swal.fire({
-          title: "Bienvenido nuevo artista 🎤",
-          text: "Debes crear tu nombre para continuar",
-          input: "text",
-          inputPlaceholder: "Ej: DJ Rolando",
-          background: "#000",
-          color: "#06b6d4",
-          allowOutsideClick: false,
-          allowEscapeKey: false,
-          confirmButtonText: "Crear usuario",
+          alertShown.current = true
+          setForceRegister(true)
+          setUserReady(false)
 
-          preConfirm: async (value) => {
+          Swal.fire({
+            title: "Bienvenido nuevo artista 🎤",
+            text: "Debes crear tu nombre para continuar",
+            input: "text",
+            inputPlaceholder: "Ej: DJ Rolando",
+            background: "#000",
+            color: "#06b6d4",
+            allowOutsideClick: false,
+            allowEscapeKey: false,
+            confirmButtonText: "Crear usuario",
 
-            if (!value || !value.trim()) {
-              Swal.showValidationMessage("Ingresa un nombre válido")
-              return false
+            preConfirm: async (value) => {
+
+              if (!value || !value.trim()) {
+                Swal.showValidationMessage("Ingresa un nombre válido")
+                return false
+              }
+
+              try {
+                await registerUser(value.trim())
+
+                // 🔥 recargar usuario REAL desde backend
+                const newUser = await getUser(deviceId)
+
+                if (newUser?.artistName) {
+                  setUserReady(true)
+                  setForceRegister(false)
+                  alertShown.current = false
+                  return true
+                }
+
+              } catch (e) {
+                Swal.showValidationMessage("Error creando usuario")
+                return false
+              }
             }
-
-            try {
-
-              await registerUser(value.trim())
-
-              setForceRegister(false)
-              setUserReady(true)
-
-              alertShown.current = false
-
-            } catch (err) {
-
-              Swal.showValidationMessage(
-                err.message || "Error creando usuario"
-              )
-
-              return false
-            }
-          }
-        })
+          })
+        }
       }
-
-      return
     }
 
-    // USER OK
-    setForceRegister(false)
-    setUserReady(true)
+    init()
 
-  }, [user, loadingUser, registerUser])
+  }, [deviceId, loadingUser])
 
   // =========================
-  // KARAOKE FILTER
+  // KARAOKE FILTER (NO TOCADO)
   // =========================
   const isKaraokeQuery = (text) => {
 
@@ -172,7 +179,7 @@ function MobilePage() {
   }
 
   // =========================
-  // SEARCH
+  // SEARCH (NO TOCADO)
   // =========================
   const debouncedSearch = useMemo(() =>
     debounce(async (value) => {
@@ -213,19 +220,16 @@ function MobilePage() {
   , [])
 
   useEffect(() => {
-
     return () => debouncedSearch.cancel()
-
   }, [debouncedSearch])
 
   const handleSearch = (value) => {
-
     setSearch(value)
     debouncedSearch(value)
   }
 
   // =========================
-  // ACTIONS
+  // ACTIONS (NO TOCADO)
   // =========================
   const handleAddSong = async (song) => {
 
@@ -255,7 +259,7 @@ function MobilePage() {
   }
 
   // =========================
-  // MY SONG STATE
+  // MY SONG STATE (NO TOCADO)
   // =========================
   const mySongs = useMemo(() =>
     queue.filter(song =>
@@ -269,27 +273,11 @@ function MobilePage() {
     mySongs[0] || null
   , [mySongs])
 
-  const turnsLeft = useMemo(() => {
-
-    if (!myActiveSong) return -1
-
-    const activeQueue = queue.filter(
-      s => s.status === "queued" || s.status === "playing"
-    )
-
-    return activeQueue.findIndex(
-      s => s.id === myActiveSong.id
-    )
-
-  }, [queue, myActiveSong])
-
-  const isMyTurn = turnsLeft === 0
-
   const isMySongPlaying =
     currentSong?.id === myActiveSong?.id
 
   // =========================
-  // ALERT SYSTEM
+  // ALERT SYSTEM (NO TOCADO)
   // =========================
   useEffect(() => {
 
@@ -316,12 +304,8 @@ function MobilePage() {
     }
 
     showAlert({
-      title: isMyTurn
-        ? "Tu turno 🎤"
-        : "Esperando turno",
-
+      title: "Tu turno 🎤",
       html: `<b>${myActiveSong.title}</b>`,
-
       background: "#000",
       color: "#06b6d4",
       showConfirmButton: false
@@ -331,12 +315,11 @@ function MobilePage() {
     queue,
     currentSong,
     myActiveSong,
-    isMyTurn,
     isMySongPlaying
   ])
 
   // =========================
-  // BLOQUEO UI
+  // UI BLOCK
   // =========================
   if (loadingUser || forceRegister || !userReady) {
 
@@ -348,7 +331,7 @@ function MobilePage() {
   }
 
   // =========================
-  // UI
+  // UI (NO TOCADO)
   // =========================
   return (
 
@@ -378,9 +361,7 @@ function MobilePage() {
       <div className="px-4 mt-5 space-y-3">
 
         {loading && (
-          <p className="text-zinc-400">
-            Buscando...
-          </p>
+          <p className="text-zinc-400">Buscando...</p>
         )}
 
         {results.map(song => (
@@ -397,13 +378,8 @@ function MobilePage() {
 
             <div className="flex-1">
 
-              <p className="font-bold text-sm">
-                {song.title}
-              </p>
-
-              <p className="text-xs text-zinc-400">
-                {song.artist}
-              </p>
+              <p className="font-bold text-sm">{song.title}</p>
+              <p className="text-xs text-zinc-400">{song.artist}</p>
 
             </div>
 
