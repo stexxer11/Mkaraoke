@@ -1,5 +1,5 @@
 import api from "./api"
-import { safeRequest } from "./safeRequest"
+
 // =========================
 // SAFE REQUEST WRAPPER
 // =========================
