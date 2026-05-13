@@ -320,7 +320,7 @@ function MobilePage() {
   // UI (SIN CAMBIOS)
   // =====================================================
   return (
-    <div className="min-h-screen bg-black text-white relative pb-24 overflow-y-auto">
+   <div className="min-h-screen bg-black text-white relative pb-24 overflow-y-auto pt-28">
 
       <div className="absolute inset-0 pointer-events-none">
         <div className="absolute w-[600px] h-[600px] bg-cyan-500/10 blur-3xl rounded-full top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" />
