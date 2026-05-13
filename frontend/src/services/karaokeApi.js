@@ -109,3 +109,13 @@ export const removeSongApi = async (id) => {
     "REMOVE_SONG"
   )
 }
+
+export const registerUserApi = async (deviceId, name) => {
+  return safeRequest(
+    api.post("/users/register", {
+      deviceId,
+      name
+    }),
+    "REGISTER_USER"
+  )
+}
