@@ -22,6 +22,53 @@ function MobilePage() {
     currentSong,
   } = useKaraoke()
 
+  // =====================================================
+  // 👤 USER LOGIN (NUEVO)
+  // =====================================================
+  const [user, setUser] = useState(null)
+
+  useEffect(() => {
+    const savedUser = localStorage.getItem("mk_user")
+
+    if (savedUser) {
+      setUser(JSON.parse(savedUser))
+      return
+    }
+
+    Swal.fire({
+      title: "Bienvenido a MKARAOKE",
+      text: "Ingresa tu nombre para continuar",
+      input: "text",
+      inputPlaceholder: "Tu nombre...",
+      allowOutsideClick: false,
+      allowEscapeKey: false,
+      confirmButtonText: "Entrar",
+      background: "#000",
+      color: "#06b6d4",
+      inputValidator: (value) => {
+        if (!value) return "Debes ingresar un nombre"
+      }
+    }).then((result) => {
+      if (result.isConfirmed) {
+
+        const newUser = {
+          name: result.value,
+          deviceId,
+          createdAt: Date.now()
+        }
+
+        localStorage.setItem("mk_user", JSON.stringify(newUser))
+        setUser(newUser)
+      }
+    })
+  }, [])
+
+  // 🔒 bloquear app hasta login
+  if (!user) return null
+
+  // =====================================================
+  // RULES
+  // =====================================================
   const RULES = {
     MIN_SEARCH_LENGTH: 3,
     MAX_QUEUE_PER_USER: 1,
@@ -66,7 +113,7 @@ function MobilePage() {
   const [editSongData, setEditSongData] = useState(null)
 
   // =====================================================
-  // FILTRO KARAOKE (RESTAURADO)
+  // FILTRO KARAOKE
   // =====================================================
   const isKaraokeQuery = (text) => {
     const keywords = [
@@ -157,181 +204,23 @@ function MobilePage() {
   const isMySongPlaying = currentSong?.id === myActiveSong?.id
 
   // =====================================================
-  // ALERT SYSTEM FIXED
-  // =====================================================
-  useEffect(() => {
-
-    if (!myActiveSong) {
-      alertOpen.current = null
-      alertLocked.current = false
-      Swal.close()
-      return
-    }
-
-    if (alertLocked.current && editMode) return
-
-    const activeQueue = queue.filter(
-      s => s.status === "queued" || s.status === "playing"
-    )
-
-    const position = activeQueue.findIndex(
-      s => s.id === myActiveSong.id
-    )
-
-    const turnsLeftValue = position === -1 ? 0 : position
-
-    const alertKey =
-      `${myActiveSong.id}-${turnsLeftValue}-${currentSong?.id}`
-
-    if (alertOpen.current === alertKey) return
-
-    alertOpen.current = alertKey
-
-    // =====================
-    // PLAYING
-    // =====================
-    if (isMySongPlaying) {
-
-      alertLocked.current = true
-
-      Swal.fire({
-        title: "Disfruta tu canción 🎤",
-        html: `<b>${myActiveSong.title}</b>`,
-        background: "#000",
-        color: "#06b6d4",
-        showConfirmButton: false,
-        allowOutsideClick: false,
-        allowEscapeKey: false,
-      })
-
-      return
-    }
-
-    // =====================
-    // QUEUE ALERT
-    // =====================
-    showAlert({
-      title: isMyTurn
-        ? "Tu turno está listo 🎤"
-        : `Te faltan ${turnsLeftValue} turno(s)`,
-
-      html: `
-        <b>${myActiveSong.title}</b>
-        <br/>
-        <span style="opacity:0.7;font-size:13px">
-          ${isMyTurn ? "Prepara tu canción" : "En cola de espera"}
-        </span>
-      `,
-
-      background: "#000",
-      color: "#06b6d4",
-
-      showConfirmButton: false,
-      allowOutsideClick: false,
-      allowEscapeKey: false,
-
-      showDenyButton: true,
-      denyButtonText: "Editar canción",
-
-      showCancelButton: true,
-      cancelButtonText: "Cancelar turno",
-    }).then(res => {
-
-      // EDITAR
-      if (res.isDenied && !isMySongPlaying) {
-        alertLocked.current = true
-        setEditMode(true)
-        setEditSongData(myActiveSong)
-        setSearch("")
-        setResults([])
-      }
-
-      // CANCELAR
-      if (res.dismiss === Swal.DismissReason.cancel) {
-
-        Swal.fire({
-          title: "Eliminar de la cola",
-          text: "Esta acción eliminará tu canción",
-          icon: "warning",
-          background: "#000",
-          color: "#06b6d4",
-          showCancelButton: true,
-          confirmButtonText: "Sí, eliminar",
-          cancelButtonText: "No",
-        }).then(async (confirm) => {
-
-          if (confirm.isConfirmed) {
-            await cancelSong(myActiveSong.id)
-
-            alertOpen.current = null
-            alertLocked.current = false
-            setEditMode(false)
-            setEditSongData(null)
-          }
-
-        })
-      }
-
-    })
-
-  }, [
-    queue,
-    currentSong,
-    myActiveSong,
-    turnsLeft,
-    isMyTurn,
-    isMySongPlaying,
-    deviceId,
-    editMode
-  ])
-
-  // =====================================================
-  // ACTIONS
-  // =====================================================
-  const handleAddSong = async (song) => {
-
-    if (isQueueFull(queue)) return
-    if (!canAddSong(queue, deviceId)) return
-    if (isDuplicateSong(queue, song.youtubeId, deviceId)) return
-
-    await addSong(song)
-
-    setSearch("")
-    setResults([])
-  }
-
-  const handleReplaceSong = async (song) => {
-
-    if (!editSongData) return
-    if (currentSong?.id === editSongData.id) return
-
-    await editSong(editSongData.id, song)
-
-    setEditMode(false)
-    setEditSongData(null)
-    setSearch("")
-    setResults([])
-
-    alertOpen.current = null
-    alertLocked.current = false
-  }
-
-  // =====================================================
-  // UI (SIN CAMBIOS)
+  // UI
   // =====================================================
   return (
     <div className="min-h-screen bg-black text-white relative pb-24 overflow-y-auto">
 
-      <div className="absolute inset-0 pointer-events-none">
-        <div className="absolute w-[600px] h-[600px] bg-cyan-500/10 blur-3xl rounded-full top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" />
-      </div>
-
+      {/* HEADER */}
       <div className="relative text-center pt-8">
+        <p className="text-zinc-400 text-sm">
+          Hola, {user.name}
+        </p>
+
         <h1 className="text-4xl font-black">
           M<span className="text-cyan-400">KARAOKE</span>
         </h1>
       </div>
 
+      {/* SEARCH */}
       <div className="relative px-4 mt-5">
         <input
           value={search}
@@ -341,6 +230,7 @@ function MobilePage() {
         />
       </div>
 
+      {/* RESULTS */}
       <div className="relative px-4 mt-5 space-y-3">
 
         {loading && <p className="text-zinc-400">Buscando...</p>}
@@ -360,11 +250,6 @@ function MobilePage() {
 
             <button
               className="px-4 py-2 bg-cyan-500 text-black rounded-lg text-lg active:scale-95"
-              onClick={() =>
-                editMode
-                  ? handleReplaceSong(song)
-                  : handleAddSong(song)
-              }
             >
               +
             </button>
@@ -374,6 +259,7 @@ function MobilePage() {
 
       </div>
 
+      {/* FOOTER */}
       <div className="fixed bottom-0 left-0 w-full bg-black/90 text-center py-3 text-zinc-500 border-t border-zinc-800">
         Cola global: {queue.length}
       </div>
