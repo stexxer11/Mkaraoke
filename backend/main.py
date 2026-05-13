@@ -53,13 +53,16 @@ http_client = None
 async def startup():
     global http_client
     http_client = httpx.AsyncClient(timeout=10)
+    print("HTTP CLIENT READY")
 
 @app.on_event("shutdown")
 async def shutdown():
-    await http_client.aclose()
+    global http_client
+    if http_client:
+        await http_client.aclose()
 
 # =====================================================
-# WEBSOCKET
+# WEBSOCKETS
 # =====================================================
 
 clients = set()
@@ -82,7 +85,7 @@ class UserCreate(BaseModel):
     name: str
 
 # =====================================================
-# HELPERS
+# HELPERS DB
 # =====================================================
 
 def row_to_song(r):
@@ -114,7 +117,7 @@ def execute(q, p={}):
         conn.execute(text(q), p)
 
 # =====================================================
-# USERS (REGISTRO)
+# USERS
 # =====================================================
 
 @app.post("/users/register")
@@ -143,7 +146,7 @@ async def register_user(user: UserCreate):
     return {"ok": True, "existing": False}
 
 # =====================================================
-# QUEUE
+# QUEUE HELPERS
 # =====================================================
 
 def get_queue():
@@ -174,7 +177,7 @@ def get_current():
     return row_to_song(row) if row else None
 
 # =====================================================
-# BROADCAST
+# BROADCAST SAFE
 # =====================================================
 
 async def broadcast(data):
@@ -183,16 +186,12 @@ async def broadcast(data):
     async with clients_lock:
         current = list(clients)
 
-    dead = set()
-
     for ws in current:
         try:
             await ws.send_text(msg)
         except:
-            dead.add(ws)
-
-    async with clients_lock:
-        clients.difference_update(dead)
+            async with clients_lock:
+                clients.discard(ws)
 
 
 async def broadcast_queue():
@@ -215,13 +214,13 @@ async def broadcast_player():
     })
 
 # =====================================================
-# YOUTUBE SEARCH
+# YOUTUBE SEARCH SAFE
 # =====================================================
 
 @app.get("/search")
 async def search(q: str = Query(...)):
 
-    if not API_KEY:
+    if not API_KEY or http_client is None:
         return []
 
     if len(q.strip()) < 3:
@@ -256,7 +255,7 @@ async def search(q: str = Query(...)):
         return []
 
 # =====================================================
-# WEBSOCKET
+# WEBSOCKET STABLE
 # =====================================================
 
 @app.websocket("/ws")
@@ -267,22 +266,31 @@ async def ws(websocket: WebSocket):
     async with clients_lock:
         clients.add(websocket)
 
-    await websocket.send_json({
-        "type": "queue_update",
-        "queue": get_queue()
-    })
-
-    current = get_current()
-    if current:
+    try:
         await websocket.send_json({
-            "type": "LOAD_VIDEO",
-            "song": current
+            "type": "queue_update",
+            "queue": get_queue()
         })
 
-    try:
+        current = get_current()
+        if current:
+            await websocket.send_json({
+                "type": "LOAD_VIDEO",
+                "song": current
+            })
+
         while True:
-            await websocket.receive_text()
+            try:
+                msg = await websocket.receive_text()
+                if msg == "ping":
+                    await websocket.send_text("pong")
+            except:
+                break
+
     except WebSocketDisconnect:
+        pass
+
+    finally:
         async with clients_lock:
             clients.discard(websocket)
 
