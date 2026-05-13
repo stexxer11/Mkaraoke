@@ -18,6 +18,8 @@ import {
   removeSongApi,
 } from "../services/karaokeApi"
 
+import { getUserApi, createUserApi } from "../services/karaokeApi"
+
 const KaraokeContext = createContext()
 
 export function KaraokeProvider({ children }) {

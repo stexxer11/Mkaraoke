@@ -53,8 +53,9 @@ export const removeSongApi = (id) =>
 // 🆕 USERS (AQUÍ TODO JUNTO)
 // =========================
 
-export const getUserApi = (deviceId) =>
-  safeRequest(api.get(`/user/${deviceId}`), "GET_USER")
 
-export const createUserApi = (data) =>
-  safeRequest(api.post("/user/create", data), "CREATE_USER")
+export const getUserApi = async (id) =>
+  safeRequest(api.get(`/user/${id}`), "GET_USER")
+
+export const createUserApi = async (data) =>
+  safeRequest(api.post(`/user`, data), "CREATE_USER")

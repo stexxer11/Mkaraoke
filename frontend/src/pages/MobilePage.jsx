@@ -21,26 +21,38 @@ function MobilePage() {
     deviceId,
     currentSong,
 
-    // 🆕 USER
+    // USER (Supabase)
     user,
     loadingUser,
     registerUser
   } = useKaraoke()
 
   // =========================
-  // WELCOME STATE 🆕
+  // LOADING USER SAFE GUARD
+  // =========================
+
+  if (loadingUser) {
+    return (
+      <div className="min-h-screen bg-black text-white flex items-center justify-center">
+        Cargando usuario...
+      </div>
+    )
+  }
+
+  // =========================
+  // WELCOME STATE
   // =========================
 
   const [showWelcome, setShowWelcome] = useState(false)
   const [nameInput, setNameInput] = useState("")
 
   useEffect(() => {
-    if (loadingUser) return
-
     if (!user) {
       setShowWelcome(true)
+    } else {
+      setShowWelcome(false)
     }
-  }, [user, loadingUser])
+  }, [user])
 
   // =========================
   // RULES
@@ -63,9 +75,10 @@ function MobilePage() {
 
   const canAddSong = (queue, deviceId) => {
     const mySongs = queue.filter(
-      s => s.ownerId === deviceId &&
-      s.status !== "done" &&
-      s.status !== "cancelled"
+      s =>
+        s.ownerId === deviceId &&
+        s.status !== "done" &&
+        s.status !== "cancelled"
     )
     return mySongs.length < RULES.MAX_QUEUE_PER_USER
   }
@@ -82,6 +95,10 @@ function MobilePage() {
   const alertLocked = useRef(false)
   const lastSearch = useRef(0)
 
+  // =========================
+  // SEARCH STATE
+  // =========================
+
   const [search, setSearch] = useState("")
   const [results, setResults] = useState([])
   const [loading, setLoading] = useState(false)
@@ -90,7 +107,7 @@ function MobilePage() {
   const [editSongData, setEditSongData] = useState(null)
 
   // =========================
-  // WELCOME SCREEN 🆕 (OBLIGATORIO)
+  // WELCOME SCREEN
   // =========================
 
   if (showWelcome) {
@@ -118,22 +135,19 @@ function MobilePage() {
             className="mt-4 w-full bg-cyan-500 text-black p-3 rounded-lg"
             onClick={async () => {
               if (!nameInput.trim()) return
-
               await registerUser(nameInput.trim())
-              setShowWelcome(false)
             }}
           >
             Continuar
           </button>
 
         </div>
-
       </div>
     )
   }
 
   // =========================
-  // FILTRO KARAOKE
+  // KARAOKE FILTER
   // =========================
 
   const isKaraokeQuery = (text) => {
@@ -157,7 +171,7 @@ function MobilePage() {
   }
 
   // =========================
-  // SEARCH
+  // SEARCH (DEBOUNCED)
   // =========================
 
   const debouncedSearch = useMemo(() =>
@@ -177,7 +191,7 @@ function MobilePage() {
       try {
         const data = await searchYouTube(forceKaraokeQuery(value))
         setResults(data || [])
-      } catch (err) {
+      } catch {
         setResults([])
       }
 
@@ -210,7 +224,6 @@ function MobilePage() {
   const myActiveSong = useMemo(() => mySongs[0] || null, [mySongs])
 
   const turnsLeft = useMemo(() => {
-
     if (!myActiveSong) return -1
 
     const activeQueue = queue.filter(
@@ -290,16 +303,9 @@ function MobilePage() {
 
       background: "#000",
       color: "#06b6d4",
-
       showConfirmButton: false,
       allowOutsideClick: false,
       allowEscapeKey: false,
-
-      showDenyButton: true,
-      denyButtonText: "Editar canción",
-
-      showCancelButton: true,
-      cancelButtonText: "Cancelar turno",
     })
 
   }, [
@@ -314,7 +320,7 @@ function MobilePage() {
   ])
 
   // =========================
-  // ACTIONS (igual)
+  // ACTIONS
   // =========================
 
   const handleAddSong = async (song) => {
@@ -329,7 +335,6 @@ function MobilePage() {
   }
 
   const handleReplaceSong = async (song) => {
-
     if (!editSongData) return
     if (currentSong?.id === editSongData.id) return
 
@@ -348,34 +353,33 @@ function MobilePage() {
   return (
     <div className="min-h-screen bg-black text-white relative pb-24 overflow-y-auto">
 
-      {/* 🆕 USER HEADER */}
       {user && (
         <div className="text-center pt-4 text-zinc-400 text-sm">
           Bienvenido, {user.artistName}
         </div>
       )}
 
-      <div className="relative text-center pt-4">
+      <div className="text-center pt-4">
         <h1 className="text-4xl font-black">
           M<span className="text-cyan-400">KARAOKE</span>
         </h1>
       </div>
 
-      <div className="relative px-4 mt-5">
+      <div className="px-4 mt-5">
         <input
           value={search}
           onChange={(e) => handleSearch(e.target.value)}
-          placeholder={editMode ? "Buscar reemplazo..." : "Buscar canción..."}
-          className="w-full px-4 py-4 text-base rounded-xl bg-black/60 border border-cyan-500/20 outline-none"
+          placeholder="Buscar canción..."
+          className="w-full px-4 py-4 rounded-xl bg-black/60 border border-cyan-500/20"
         />
       </div>
 
-      <div className="relative px-4 mt-5 space-y-3">
+      <div className="px-4 mt-5 space-y-3">
 
         {loading && <p className="text-zinc-400">Buscando...</p>}
 
         {results.map(song => (
-          <div key={song.youtubeId} className="flex items-center gap-3 p-3 bg-black/60 rounded-xl">
+          <div key={song.youtubeId} className="flex gap-3 p-3 bg-black/60 rounded-xl">
 
             <img
               src={`https://img.youtube.com/vi/${song.youtubeId}/hqdefault.jpg`}
@@ -388,7 +392,7 @@ function MobilePage() {
             </div>
 
             <button
-              className="px-4 py-2 bg-cyan-500 text-black rounded-lg text-lg active:scale-95"
+              className="px-4 py-2 bg-cyan-500 text-black rounded-lg"
               onClick={() =>
                 editMode
                   ? handleReplaceSong(song)
@@ -400,10 +404,9 @@ function MobilePage() {
 
           </div>
         ))}
-
       </div>
 
-      <div className="fixed bottom-0 left-0 w-full bg-black/90 text-center py-3 text-zinc-500 border-t border-zinc-800">
+      <div className="fixed bottom-0 w-full bg-black/90 text-center py-3 text-zinc-500 border-t border-zinc-800">
         Cola global: {queue.length}
       </div>
 

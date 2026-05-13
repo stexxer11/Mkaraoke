@@ -18,6 +18,9 @@ import asyncio
 API_KEY = os.getenv("YOUTUBE_API_KEY")
 DATABASE_URL = os.getenv("DATABASE_URL")
 
+if not DATABASE_URL:
+    raise ValueError("DATABASE_URL no está configurada")
+
 # =====================================================
 # APP
 # =====================================================
@@ -76,7 +79,6 @@ class SongCreate(BaseModel):
     youtubeId: str
 
 
-# 🆕 USER MODEL
 class UserCreate(BaseModel):
     id: str
     artistName: str
@@ -84,18 +86,6 @@ class UserCreate(BaseModel):
 # =====================================================
 # HELPERS
 # =====================================================
-
-def row_to_song(r):
-    return {
-        "id": r[0],
-        "ownerId": r[1],
-        "title": r[2],
-        "artist": r[3],
-        "youtubeId": r[4],
-        "status": r[5],
-        "createdAt": r[6],
-        "updatedAt": r[7],
-    }
 
 def fetch_all(q, p={}):
     with engine.connect() as conn:
@@ -110,7 +100,7 @@ def execute(q, p={}):
         conn.execute(text(q), p)
 
 # =====================================================
-# USERS 🆕
+# USERS
 # =====================================================
 
 @app.get("/user/{user_id}")
@@ -123,7 +113,7 @@ def get_user(user_id: str):
     """, {"i": user_id})
 
     if not row:
-        return None
+        raise HTTPException(status_code=404, detail="USER_NOT_FOUND")
 
     return {
         "id": row[0],
@@ -135,6 +125,13 @@ def get_user(user_id: str):
 def create_user(user: UserCreate):
 
     now = int(time.time() * 1000)
+
+    exists = fetch_one("""
+        SELECT id FROM users WHERE id=:i
+    """, {"i": user.id})
+
+    if exists:
+        return {"ok": True, "exists": True}
 
     execute("""
         INSERT INTO users (id, artist_name, created_at)
@@ -148,23 +145,26 @@ def create_user(user: UserCreate):
     return {"ok": True}
 
 # =====================================================
-# QUEUE
+# SONG HELPERS
 # =====================================================
+
+def row_to_song(r):
+    return {
+        "id": r[0],
+        "ownerId": r[1],
+        "title": r[2],
+        "artist": r[3],
+        "youtubeId": r[4],
+        "status": r[5],
+        "createdAt": r[6],
+        "updatedAt": r[7],
+    }
 
 def get_queue():
     rows = fetch_all("""
         SELECT * FROM songs
         WHERE status IN ('queued','playing')
         ORDER BY created_at ASC
-    """)
-    return [row_to_song(r) for r in rows]
-
-def get_history():
-    rows = fetch_all("""
-        SELECT * FROM songs
-        WHERE status IN ('done','cancelled')
-        ORDER BY updated_at DESC
-        LIMIT 50
     """)
     return [row_to_song(r) for r in rows]
 
@@ -411,7 +411,7 @@ async def edit_song(song_id: str, data: dict):
     return {"ok": True}
 
 # =====================================================
-# CANCEL / DELETE / CLEAR (igual que tu versión)
+# CANCEL
 # =====================================================
 
 @app.put("/queue/cancel/{song_id}")
@@ -425,4 +425,5 @@ async def cancel_song(song_id: str):
     """, {"n": now, "i": song_id})
 
     await broadcast_queue()
+
     return {"ok": True}
