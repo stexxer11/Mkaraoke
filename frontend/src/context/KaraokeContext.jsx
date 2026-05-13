@@ -8,6 +8,8 @@ import {
 } from "react"
 
 import {
+  getUserApi,
+  createUserApi,
   addSongApi,
   editSongApi,
   cancelSongApi,
@@ -15,12 +17,6 @@ import {
   playNowApi,
   removeSongApi,
 } from "../services/karaokeApi"
-
-// 🆕 USER API
-import {
-  getUserApi,
-  createUserApi
-} from "../services/userApi"
 
 const KaraokeContext = createContext()
 

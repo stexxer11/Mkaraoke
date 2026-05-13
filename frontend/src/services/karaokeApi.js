@@ -1,111 +1,60 @@
 import api from "./api"
 
 // =========================
-// SAFE REQUEST WRAPPER
+// SAFE WRAPPER
 // =========================
 
 const safeRequest = async (promise, name) => {
   try {
     const res = await promise
 
-    if (!res) {
-      throw new Error(`${name}: NO_RESPONSE`)
-    }
-
-    if (res.data === undefined || res.data === null) {
-      throw new Error(`${name}: EMPTY_DATA`)
-    }
+    if (!res) throw new Error(`${name}: NO_RESPONSE`)
+    if (res.data === undefined) throw new Error(`${name}: EMPTY_DATA`)
 
     return res.data
 
   } catch (err) {
-    const backendError = err?.response?.data
-    const message = backendError?.detail || err.message || "UNKNOWN_ERROR"
+    const message =
+      err?.response?.data?.detail ||
+      err.message ||
+      "UNKNOWN_ERROR"
 
     console.error(`API ERROR [${name}]`, message)
-
     throw new Error(message)
   }
 }
 
 // =========================
-// GET QUEUE
+// QUEUE
 // =========================
 
-export const getQueue = async () => {
-  return safeRequest(api.get("/queue"), "GET_QUEUE")
-}
+export const getQueue = () =>
+  safeRequest(api.get("/queue"), "GET_QUEUE")
+
+export const addSongApi = (song) =>
+  safeRequest(api.post("/queue/add", song), "ADD_SONG")
+
+export const editSongApi = (id, data) =>
+  safeRequest(api.put(`/queue/edit/${id}`, data), "EDIT_SONG")
+
+export const cancelSongApi = (id) =>
+  safeRequest(api.put(`/queue/cancel/${id}`), "CANCEL_SONG")
+
+export const nextSongApi = () =>
+  safeRequest(api.post("/queue/next"), "NEXT_SONG")
+
+export const playNowApi = (id) =>
+  safeRequest(api.post(`/queue/playnow/${id}`), "PLAY_NOW")
+
+export const removeSongApi = (id) =>
+  safeRequest(api.delete(`/queue/hard/${id}`), "REMOVE_SONG")
 
 // =========================
-// ADD SONG
+// 🆕 USERS (AQUÍ TODO JUNTO)
 // =========================
 
-export const addSongApi = async (song) => {
-  return safeRequest(
-    api.post("/queue/add", song),
-    "ADD_SONG"
-  )
-}
+export const getUserApi = (deviceId) =>
+  safeRequest(api.get(`/user/${deviceId}`), "GET_USER")
 
-// =========================
-// EDIT SONG
-// =========================
-
-export const editSongApi = async (id, data) => {
-  if (!id) throw new Error("EDIT_SONG: MISSING_ID")
-
-  return safeRequest(
-    api.put(`/queue/edit/${id}`, data),
-    "EDIT_SONG"
-  )
-}
-
-// =========================
-// CANCEL SONG
-// =========================
-
-export const cancelSongApi = async (id) => {
-  if (!id) throw new Error("CANCEL_SONG: MISSING_ID")
-
-  return safeRequest(
-    api.put(`/queue/cancel/${id}`),
-    "CANCEL_SONG"
-  )
-}
-
-// =========================
-// NEXT SONG
-// =========================
-
-export const nextSongApi = async () => {
-  return safeRequest(
-    api.post("/queue/next"),
-    "NEXT_SONG"
-  )
-}
-
-// =========================
-// PLAY NOW
-// =========================
-
-export const playNowApi = async (id) => {
-  if (!id) throw new Error("PLAY_NOW: MISSING_ID")
-
-  return safeRequest(
-    api.post(`/queue/playnow/${id}`),
-    "PLAY_NOW"
-  )
-}
-
-// =========================
-// REMOVE SONG
-// =========================
-
-export const removeSongApi = async (id) => {
-  if (!id) throw new Error("REMOVE_SONG: MISSING_ID")
-
-  return safeRequest(
-    api.delete(`/queue/remove/${id}`),
-    "REMOVE_SONG"
-  )
-}
+export const createUserApi = (data) =>
+  safeRequest(api.post("/user/create", data), "CREATE_USER")
