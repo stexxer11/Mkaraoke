@@ -2,17 +2,17 @@ import axios from "axios"
 import { createClient } from "@supabase/supabase-js"
 
 /* =========================
-   AXIOS (tu backend FastAPI)
+   AXIOS (FastAPI backend)
 ========================= */
 
 const baseURL = import.meta.env.VITE_API_URL
 
 if (!baseURL) {
-  throw new Error("VITE_API_URL no está definida en las variables de entorno")
+  console.warn("VITE_API_URL no está definida")
 }
 
 export const api = axios.create({
-  baseURL,
+  baseURL: baseURL || "",
   timeout: 15000,
   headers: {
     "Content-Type": "application/json",
@@ -28,16 +28,17 @@ api.interceptors.response.use(
 )
 
 /* =========================
-   SUPABASE CLIENT
+   SUPABASE CLIENT (SAFE)
 ========================= */
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
 
 if (!supabaseUrl || !supabaseAnonKey) {
-  throw new Error(
-    "Faltan variables de entorno de Supabase (VITE_SUPABASE_URL o VITE_SUPABASE_ANON_KEY)"
-  )
+  console.warn("Supabase env missing")
 }
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey)
+export const supabase =
+  supabaseUrl && supabaseAnonKey
+    ? createClient(supabaseUrl, supabaseAnonKey)
+    : null
