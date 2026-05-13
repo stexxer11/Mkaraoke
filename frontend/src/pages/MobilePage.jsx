@@ -17,6 +17,7 @@ function MobilePage() {
   const {
     queue,
     addSong,
+    editSong,
     cancelSong,
     deviceId,
     currentSong,
@@ -32,81 +33,56 @@ function MobilePage() {
   // ================= USER STATE =================
   const [username, setUsername] = useState("")
   const [userLoaded, setUserLoaded] = useState(false)
+  const [isFirstTime, setIsFirstTime] = useState(false)
 
+  // ================= ALERT REF =================
   const welcomeShown = useRef(false)
-  const userInitDone = useRef(false)
 
   // ================= INIT USER =================
   useEffect(() => {
 
     const initUser = async () => {
       if (!deviceId) return
-      if (userInitDone.current) return
 
-      userInitDone.current = true
+      const { data } = await supabase
+        .from("users")
+        .select("*")
+        .eq("device_id", deviceId)
+        .maybeSingle()
 
-      try {
-        const { data, error } = await supabase
-          .from("users")
-          .select("*")
-          .eq("device_id", deviceId)
-          .maybeSingle()
+      // ================= FIRST TIME USER =================
+      if (!data) {
 
-        if (error) throw error
+        setIsFirstTime(true)
 
-        // ================= FIRST TIME USER =================
-        if (!data) {
+        const { value: name } = await Swal.fire({
+          title: "🎤 Bienvenido al Karaoke",
+          text: "Ingresa tu nombre artístico",
+          input: "text",
+          inputPlaceholder: "Ej: DJ Rolando",
+          background: "#000",
+          color: "#06b6d4",
+          confirmButtonText: "Entrar",
+          allowOutsideClick: false
+        })
 
-          const { value: name } = await Swal.fire({
-            title: "🎤 Bienvenido al Karaoke",
-            text: "Ingresa tu nombre artístico",
-            input: "text",
-            inputPlaceholder: "Ej: DJ Rolando",
-            background: "#000",
-            color: "#06b6d4",
-            confirmButtonText: "Entrar",
-            allowOutsideClick: false,
-            allowEscapeKey: false
-          })
+        if (name) {
 
-          if (!name) return
-
-          const { error: insertError } = await supabase
+          await supabase
             .from("users")
             .insert([
               {
                 device_id: deviceId,
-                name: name.trim()
+                name: name
               }
             ])
 
-          if (insertError) throw insertError
-
-          setUsername(name.trim())
+          setUsername(name)
           setUserLoaded(true)
 
           Swal.fire({
             title: "Listo 🎉",
-            text: `Bienvenido ${name}`,
-            background: "#000",
-            color: "#06b6d4",
-            timer: 1800,
-            showConfirmButton: false
-          })
-
-          return
-        }
-
-        // ================= USER EXISTS =================
-        setUsername(data.name)
-        setUserLoaded(true)
-
-        if (!welcomeShown.current) {
-          welcomeShown.current = true
-
-          Swal.fire({
-            title: "😂 Bienvenido de nuevo artista",
-            html: `<b>Hola ${data.name}</b><br/>el escenario te espera`,
+            text: `Prepárate para brillar, ${name}`,
             background: "#000",
             color: "#06b6d4",
             timer: 2000,
@@ -114,16 +90,28 @@ function MobilePage() {
           })
         }
 
-      } catch (err) {
-        console.error("USER INIT ERROR:", err)
+        return
+      }
 
-        setUserLoaded(true)
-        setUsername("Artista")
+      // ================= USER EXISTS =================
+      setUsername(data.name)
+      setUserLoaded(true)
+
+      if (!welcomeShown.current) {
+        welcomeShown.current = true
+
+        Swal.fire({
+          title: "😂 Bienvenido de nuevo artista",
+          html: `<b>Hola ${data.name}</b><br/>el escenario te extrañaba`,
+          background: "#000",
+          color: "#06b6d4",
+          showConfirmButton: false,
+          timer: 2200
+        })
       }
     }
 
     initUser()
-
   }, [deviceId])
 
   // ================= SONG RULES =================
@@ -147,13 +135,44 @@ function MobilePage() {
   const isQueueFull = (queue) =>
     queue.length >= RULES.MAX_GLOBAL_QUEUE
 
-  // ================= SEARCH =================
+  const showAlert = (config) => {
+    if (Swal.isVisible()) Swal.close()
+    return Swal.fire(config)
+  }
+
+  const alertOpen = useRef(null)
+  const alertLocked = useRef(false)
+  const lastSearch = useRef(0)
+
   const [search, setSearch] = useState("")
   const [results, setResults] = useState([])
   const [loading, setLoading] = useState(false)
 
-  const lastSearch = useRef(0)
+  const [editMode, setEditMode] = useState(false)
+  const [editSongData, setEditSongData] = useState(null)
 
+  // ================= KARAOKE FILTER =================
+  const isKaraokeQuery = (text) => {
+    const keywords = [
+      "karaoke",
+      "instrumental",
+      "lyrics",
+      "letra",
+      "cover",
+      "backing track"
+    ]
+
+    return keywords.some(k =>
+      text.toLowerCase().includes(k)
+    )
+  }
+
+  const forceKaraokeQuery = (text) => {
+    if (isKaraokeQuery(text)) return text
+    return `${text} karaoke instrumental lyrics`
+  }
+
+  // ================= SEARCH =================
   const debouncedSearch = useMemo(() =>
     debounce(async (value) => {
 
@@ -169,7 +188,7 @@ function MobilePage() {
       setLoading(true)
 
       try {
-        const data = await searchYouTube(value + " karaoke")
+        const data = await searchYouTube(forceKaraokeQuery(value))
         setResults(data || [])
       } catch {
         setResults([])
@@ -177,7 +196,7 @@ function MobilePage() {
 
       setLoading(false)
 
-    }, 500)
+    }, 600)
   , [])
 
   const handleSearch = (value) => {
@@ -188,6 +207,117 @@ function MobilePage() {
   useEffect(() => {
     return () => debouncedSearch.cancel()
   }, [debouncedSearch])
+
+  // ================= MY SONG =================
+  const mySongs = useMemo(() =>
+    queue.filter(song =>
+      song.ownerId === deviceId &&
+      song.status !== "done" &&
+      song.status !== "cancelled"
+    )
+  , [queue, deviceId])
+
+  const myActiveSong = useMemo(() => mySongs[0] || null, [mySongs])
+
+  const turnsLeft = useMemo(() => {
+
+    if (!myActiveSong) return -1
+
+    const activeQueue = queue.filter(
+      s => s.status === "queued" || s.status === "playing"
+    )
+
+    return activeQueue.findIndex(s =>
+      s.id === myActiveSong.id
+    )
+
+  }, [queue, myActiveSong])
+
+  const isMyTurn = turnsLeft === 0
+  const isMySongPlaying = currentSong?.id === myActiveSong?.id
+
+  // ================= ALERT SYSTEM =================
+  useEffect(() => {
+
+    if (!myActiveSong) {
+      alertOpen.current = null
+      alertLocked.current = false
+      Swal.close()
+      return
+    }
+
+    if (alertLocked.current && editMode) return
+
+    const activeQueue = queue.filter(
+      s => s.status === "queued" || s.status === "playing"
+    )
+
+    const position = activeQueue.findIndex(
+      s => s.id === myActiveSong.id
+    )
+
+    const turnsLeftValue = position === -1 ? 0 : position
+
+    const alertKey =
+      `${myActiveSong.id}-${turnsLeftValue}-${currentSong?.id}`
+
+    if (alertOpen.current === alertKey) return
+
+    alertOpen.current = alertKey
+
+    if (isMySongPlaying) {
+
+      alertLocked.current = true
+
+      Swal.fire({
+        title: "Disfruta tu canción 🎤",
+        html: `<b>${myActiveSong.title}</b>`,
+        background: "#000",
+        color: "#06b6d4",
+        showConfirmButton: false,
+      })
+
+      return
+    }
+
+    showAlert({
+      title: isMyTurn
+        ? "Tu turno está listo 🎤"
+        : `Te faltan ${turnsLeftValue} turno(s)`,
+
+      html: `<b>${myActiveSong.title}</b>`,
+
+      background: "#000",
+      color: "#06b6d4",
+
+      showConfirmButton: false,
+      showDenyButton: true,
+      denyButtonText: "Editar canción",
+
+      showCancelButton: true,
+      cancelButtonText: "Cancelar",
+    }).then(res => {
+
+      if (res.isDenied) {
+        setEditMode(true)
+        setEditSongData(myActiveSong)
+      }
+
+      if (res.dismiss === Swal.DismissReason.cancel) {
+        cancelSong(myActiveSong.id)
+      }
+
+    })
+
+  }, [
+    queue,
+    currentSong,
+    myActiveSong,
+    isMyTurn,
+    isMySongPlaying,
+    deviceId,
+    editMode
+  ])
 
   // ================= ADD SONG =================
   const handleAddSong = async (song) => {
@@ -216,16 +346,14 @@ function MobilePage() {
         </h1>
       </div>
 
-      {/* USER HEADER */}
       <div className="text-center mt-3">
         {userLoaded && (
           <h2 className="text-cyan-400 font-bold">
-            Hola artista {username}
+            Hola artista {username} 🎤
           </h2>
         )}
       </div>
 
-      {/* SEARCH */}
       <div className="px-4 mt-5">
         <input
           value={search}
@@ -235,10 +363,9 @@ function MobilePage() {
         />
       </div>
 
-      {/* RESULTS */}
       <div className="px-4 mt-4 space-y-3">
 
-        {loading && <p className="text-zinc-400">Buscando...</p>}
+        {loading && <p>Cargando...</p>}
 
         {results.map(song => (
           <div key={song.youtubeId} className="flex gap-3 p-2 bg-zinc-900">
