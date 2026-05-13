@@ -267,6 +267,7 @@ async def ws(websocket: WebSocket):
         clients.add(websocket)
 
     try:
+        # INIT STATE
         await websocket.send_json({
             "type": "queue_update",
             "queue": get_queue()
@@ -279,12 +280,22 @@ async def ws(websocket: WebSocket):
                 "song": current
             })
 
+        # KEEP ALIVE LOOP (CRÍTICO PARA RENDER)
         while True:
             try:
-                msg = await websocket.receive_text()
+                msg = await asyncio.wait_for(
+                    websocket.receive_text(),
+                    timeout=20
+                )
+
                 if msg == "ping":
                     await websocket.send_text("pong")
-            except:
+
+            except asyncio.TimeoutError:
+                # ping automático para mantener viva conexión
+                await websocket.send_text("ping")
+
+            except Exception:
                 break
 
     except WebSocketDisconnect:
@@ -293,7 +304,6 @@ async def ws(websocket: WebSocket):
     finally:
         async with clients_lock:
             clients.discard(websocket)
-
 # =====================================================
 # ADD SONG
 # =====================================================
