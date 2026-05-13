@@ -25,7 +25,6 @@ export function KaraokeProvider({ children }) {
   // =========================
   // DEVICE ID
   // =========================
-
   const [deviceId] = useState(() => {
     const saved = localStorage.getItem("mk_device_id")
     if (saved) return saved
@@ -36,16 +35,14 @@ export function KaraokeProvider({ children }) {
   })
 
   // =========================
-  // USER STATE 🆕
+  // USER STATE
   // =========================
-
   const [user, setUser] = useState(null)
   const [loadingUser, setLoadingUser] = useState(true)
 
   // =========================
-  // STATE
+  // QUEUE STATE
   // =========================
-
   const [queue, setQueue] = useState([])
   const [playerVersion, setPlayerVersion] = useState(0)
 
@@ -54,54 +51,74 @@ export function KaraokeProvider({ children }) {
   const reconnectTimeoutRef = useRef(null)
 
   // =========================
-  // LOAD USER 🆕
+  // LOAD USER (FIXED)
   // =========================
-
   useEffect(() => {
+    let mounted = true
+
     const loadUser = async () => {
       try {
         const res = await getUserApi(deviceId)
 
-        if (res) {
+        if (!mounted) return
+
+        // 👇 backend ahora lanza 404 => aquí lo manejamos
+        if (res?.id) {
           setUser(res)
         } else {
           setUser(null)
         }
 
       } catch (err) {
-        setUser(null)
+        if (!mounted) return
+
+        // 👇 importante: si es 404 NO es error real
+        if (err?.response?.status === 404) {
+          setUser(null)
+        } else {
+          console.log("GET USER ERROR:", err)
+          setUser(null)
+        }
+
       } finally {
-        setLoadingUser(false)
+        if (mounted) setLoadingUser(false)
       }
     }
 
     loadUser()
+
+    return () => {
+      mounted = false
+    }
   }, [deviceId])
 
   // =========================
-  // REGISTER USER 🆕
+  // REGISTER USER (FIXED)
   // =========================
-
   const registerUser = async (artistName) => {
-    await createUserApi({
-      id: deviceId,
-      artistName
-    })
+    try {
+      await createUserApi({
+        id: deviceId,
+        artistName
+      })
 
-    const newUser = {
-      id: deviceId,
-      artistName
+      const newUser = {
+        id: deviceId,
+        artistName
+      }
+
+      setUser(newUser)
+      return newUser
+
+    } catch (err) {
+      console.log("CREATE USER ERROR:", err)
+      return null
     }
-
-    setUser(newUser)
-
-    return newUser
   }
 
   // =========================
   // DERIVED STATE
   // =========================
-
   const currentSong = useMemo(
     () => queue.find(s => s.status === "playing") || null,
     [queue]
@@ -113,21 +130,24 @@ export function KaraokeProvider({ children }) {
   )
 
   const mySongs = useMemo(
-    () => activeQueue.filter(s => String(s.ownerId) === String(deviceId)),
+    () => activeQueue.filter(
+      s => String(s.ownerId) === String(deviceId)
+    ),
     [activeQueue, deviceId]
   )
 
   const hasActiveSong = mySongs.length > 0
 
   const visibleQueue = useMemo(
-    () => queue.filter(s => s.status !== "done" && s.status !== "cancelled"),
+    () => queue.filter(s =>
+      s.status !== "done" && s.status !== "cancelled"
+    ),
     [queue]
   )
 
   // =========================
-  // SAFE SEND
+  // SAFE WS SEND
   // =========================
-
   const safeSend = (data) => {
     const ws = socketRef.current
     if (!ws || ws.readyState !== WebSocket.OPEN) return
@@ -135,9 +155,8 @@ export function KaraokeProvider({ children }) {
   }
 
   // =========================
-  // WEBSOCKET
+  // WEBSOCKET (FIXED STABLE)
   // =========================
-
   useEffect(() => {
 
     let shouldReconnect = true
@@ -167,7 +186,10 @@ export function KaraokeProvider({ children }) {
             setQueue(data.queue || [])
           }
 
-          if (data.type === "LOAD_VIDEO" || data.type === "STOP_VIDEO") {
+          if (
+            data.type === "LOAD_VIDEO" ||
+            data.type === "STOP_VIDEO"
+          ) {
             setPlayerVersion(v => v + 1)
           }
 
@@ -184,9 +206,12 @@ export function KaraokeProvider({ children }) {
 
         if (!shouldReconnect) return
 
-        const timeout = Math.min(1000 * 2 ** reconnectRef.current, 10000)
-        reconnectRef.current += 1
+        const timeout = Math.min(
+          1000 * 2 ** reconnectRef.current,
+          10000
+        )
 
+        reconnectRef.current += 1
         reconnectTimeoutRef.current = setTimeout(connect, timeout)
       }
     }
@@ -208,7 +233,6 @@ export function KaraokeProvider({ children }) {
   // =========================
   // ACTIONS
   // =========================
-
   const addSong = async (songData) => {
     try {
       return await addSongApi({
@@ -240,11 +264,9 @@ export function KaraokeProvider({ children }) {
   // =========================
   // PROVIDER
   // =========================
-
   return (
     <KaraokeContext.Provider value={{
 
-      // queue
       queue,
       visibleQueue,
       activeQueue,
@@ -252,17 +274,14 @@ export function KaraokeProvider({ children }) {
 
       playerVersion,
 
-      // device
       deviceId,
       mySongs,
       hasActiveSong,
 
-      // user 🆕
       user,
       loadingUser,
       registerUser,
 
-      // actions
       addSong,
       editSong,
       cancelSong,
@@ -280,4 +299,4 @@ export function KaraokeProvider({ children }) {
 
 export function useKaraoke() {
   return useContext(KaraokeContext)
-} 
+}

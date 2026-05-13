@@ -36,14 +36,12 @@ app.add_middleware(
 )
 
 # =====================================================
-# DB
+# DB (SUPABASE POSTGRES)
 # =====================================================
 
 engine = create_engine(
     DATABASE_URL,
-    pool_pre_ping=True,
-    pool_size=5,
-    max_overflow=10
+    pool_pre_ping=True
 )
 
 # =====================================================
@@ -60,13 +58,6 @@ async def startup():
 @app.on_event("shutdown")
 async def shutdown():
     await http_client.aclose()
-
-# =====================================================
-# WEBSOCKET STATE
-# =====================================================
-
-clients = set()
-clients_lock = asyncio.Lock()
 
 # =====================================================
 # MODELS
@@ -87,20 +78,20 @@ class UserCreate(BaseModel):
 # HELPERS
 # =====================================================
 
-def fetch_all(q, p={}):
-    with engine.connect() as conn:
-        return conn.execute(text(q), p).fetchall()
-
 def fetch_one(q, p={}):
     with engine.connect() as conn:
         return conn.execute(text(q), p).fetchone()
+
+def fetch_all(q, p={}):
+    with engine.connect() as conn:
+        return conn.execute(text(q), p).fetchall()
 
 def execute(q, p={}):
     with engine.begin() as conn:
         conn.execute(text(q), p)
 
 # =====================================================
-# USERS
+# USERS (CORREGIDO PARA SUPABASE)
 # =====================================================
 
 @app.get("/user/{user_id}")
@@ -109,7 +100,8 @@ def get_user(user_id: str):
     row = fetch_one("""
         SELECT id, artist_name
         FROM users
-        WHERE id=:i
+        WHERE id = :i
+        LIMIT 1
     """, {"i": user_id})
 
     if not row:
@@ -126,8 +118,9 @@ def create_user(user: UserCreate):
 
     now = int(time.time() * 1000)
 
+    # check real en Supabase
     exists = fetch_one("""
-        SELECT id FROM users WHERE id=:i
+        SELECT id FROM users WHERE id = :i
     """, {"i": user.id})
 
     if exists:
@@ -160,6 +153,7 @@ def row_to_song(r):
         "updatedAt": r[7],
     }
 
+
 def get_queue():
     rows = fetch_all("""
         SELECT * FROM songs
@@ -167,6 +161,7 @@ def get_queue():
         ORDER BY created_at ASC
     """)
     return [row_to_song(r) for r in rows]
+
 
 def get_current():
     row = fetch_one("""
@@ -177,8 +172,11 @@ def get_current():
     return row_to_song(row) if row else None
 
 # =====================================================
-# BROADCAST
+# WEBSOCKET
 # =====================================================
+
+clients = set()
+clients_lock = asyncio.Lock()
 
 async def broadcast(data):
     msg = json.dumps(data)
@@ -197,11 +195,13 @@ async def broadcast(data):
     async with clients_lock:
         clients.difference_update(dead)
 
+
 async def broadcast_queue():
     await broadcast({
         "type": "queue_update",
         "queue": get_queue()
     })
+
 
 async def broadcast_player():
     current = get_current()
@@ -222,10 +222,7 @@ async def broadcast_player():
 @app.get("/search")
 async def search(q: str = Query(...)):
 
-    if not API_KEY:
-        return []
-
-    if len(q.strip()) < 3:
+    if not API_KEY or len(q.strip()) < 3:
         return []
 
     res = await http_client.get(
@@ -407,7 +404,6 @@ async def edit_song(song_id: str, data: dict):
     })
 
     await broadcast_queue()
-
     return {"ok": True}
 
 # =====================================================
@@ -425,5 +421,4 @@ async def cancel_song(song_id: str):
     """, {"n": now, "i": song_id})
 
     await broadcast_queue()
-
     return {"ok": True}
