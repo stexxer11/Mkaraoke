@@ -10,7 +10,7 @@ import Swal from "sweetalert2"
 
 import { useKaraoke } from "../context/KaraokeContext"
 import { searchYouTube } from "../services/youtubeApi"
-import { registerUserApi } from "../services/karaokeApi"
+import { registerUserApi } from "../services/apiUsers"
 
 function MobilePage() {
 
@@ -34,7 +34,7 @@ function MobilePage() {
   const [username, setUsername] = useState("")
   const [userLoaded, setUserLoaded] = useState(false)
   const welcomeShown = useRef(false)
-  console.log("deviceId:", deviceId)
+   console.log("deviceId:", deviceId)
   // ================= INIT USER (SWEETALERT) =================
   useEffect(() => {
 
