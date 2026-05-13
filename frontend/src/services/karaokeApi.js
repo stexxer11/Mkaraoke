@@ -1,32 +1,5 @@
 import api from "./api"
-
-// =========================
-// SAFE REQUEST WRAPPER
-// =========================
-
-const safeRequest = async (promise, name) => {
-  try {
-    const res = await promise
-
-    if (!res) {
-      throw new Error(`${name}: NO_RESPONSE`)
-    }
-
-    if (res.data === undefined || res.data === null) {
-      throw new Error(`${name}: EMPTY_DATA`)
-    }
-
-    return res.data
-
-  } catch (err) {
-    const backendError = err?.response?.data
-    const message = backendError?.detail || err.message || "UNKNOWN_ERROR"
-
-    console.error(`API ERROR [${name}]`, message)
-
-    throw new Error(message)
-  }
-}
+import { safeRequest } from "./safeRequest"
 
 // =========================
 // GET QUEUE
@@ -109,6 +82,10 @@ export const removeSongApi = async (id) => {
     "REMOVE_SONG"
   )
 }
+
+// =========================
+// REGISTER USER
+// =========================
 
 export const registerUserApi = async (deviceId, name) => {
   return safeRequest(
