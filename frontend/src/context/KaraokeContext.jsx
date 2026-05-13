@@ -23,7 +23,7 @@ const KaraokeContext = createContext()
 export function KaraokeProvider({ children }) {
 
   // =========================
-  // DEVICE ID
+  // DEVICE ID (FIX STABLE)
   // =========================
   const [deviceId] = useState(() => {
     const saved = localStorage.getItem("mk_device_id")
@@ -40,40 +40,47 @@ export function KaraokeProvider({ children }) {
   const [user, setUser] = useState(null)
   const [loadingUser, setLoadingUser] = useState(true)
 
+  const userLoadedRef = useRef(false)
+
   // =========================
   // QUEUE STATE
   // =========================
   const [queue, setQueue] = useState([])
   const [playerVersion, setPlayerVersion] = useState(0)
 
+  // =========================
+  // SOCKET
+  // =========================
   const socketRef = useRef(null)
   const reconnectRef = useRef(0)
   const reconnectTimeoutRef = useRef(null)
 
   // =========================
-  // LOAD USER (SUPABASE SAFE)
+  // LOAD USER (FIX ANONIMO BUG)
   // =========================
   useEffect(() => {
     let mounted = true
 
     const loadUser = async () => {
+      if (userLoadedRef.current) return
+      userLoadedRef.current = true
+
       try {
         const res = await getUserApi(deviceId)
 
         if (!mounted) return
 
-        if (res?.id) {
+        if (res?.id && res?.artistName) {
           setUser(res)
         } else {
           setUser(null)
         }
 
       } catch (err) {
-        if (!mounted) return
 
-        // 404 = usuario no existe (NORMAL)
         const status = err?.response?.status
 
+        // SOLO 404 = usuario no existe
         if (status === 404) {
           setUser(null)
         } else {
@@ -94,18 +101,22 @@ export function KaraokeProvider({ children }) {
   }, [deviceId])
 
   // =========================
-  // REGISTER USER
+  // REGISTER USER (FIX DUPLICADOS "ANONIMO")
   // =========================
   const registerUser = async (artistName) => {
     try {
-      await createUserApi({
+      const cleanName = artistName?.trim()
+
+      if (!cleanName) throw new Error("Nombre inválido")
+
+      const res = await createUserApi({
         id: deviceId,
-        artistName
+        artistName: cleanName
       })
 
       const newUser = {
         id: deviceId,
-        artistName
+        artistName: cleanName
       }
 
       setUser(newUser)
@@ -118,7 +129,7 @@ export function KaraokeProvider({ children }) {
   }
 
   // =========================
-  // DERIVED STATE
+  // DERIVED STATE (FIX STABLE + SAFE)
   // =========================
   const currentSong = useMemo(
     () => queue.find(s => s.status === "playing") || null,
@@ -126,7 +137,9 @@ export function KaraokeProvider({ children }) {
   )
 
   const activeQueue = useMemo(
-    () => queue.filter(s => s.status === "queued" || s.status === "playing"),
+    () => queue.filter(
+      s => s.status === "queued" || s.status === "playing"
+    ),
     [queue]
   )
 
@@ -137,10 +150,10 @@ export function KaraokeProvider({ children }) {
     [activeQueue, deviceId]
   )
 
-  const hasActiveSong = mySongs.length > 0
-
   const visibleQueue = useMemo(
-    () => queue.filter(s => s.status !== "done" && s.status !== "cancelled"),
+    () => queue.filter(
+      s => s.status !== "done" && s.status !== "cancelled"
+    ),
     [queue]
   )
 
@@ -154,7 +167,7 @@ export function KaraokeProvider({ children }) {
   }
 
   // =========================
-  // WEBSOCKET
+  // WEBSOCKET (FIX RECONNECT + NO LOOP BUG)
   // =========================
   useEffect(() => {
 
@@ -162,10 +175,9 @@ export function KaraokeProvider({ children }) {
 
     const connect = () => {
 
-      const ws = new WebSocket(
-        `${import.meta.env.VITE_WS_URL.replace("https", "wss")}/ws`
-      )
+      const url = `${import.meta.env.VITE_WS_URL.replace("https", "wss")}/ws`
 
+      const ws = new WebSocket(url)
       socketRef.current = ws
 
       ws.onopen = () => {
@@ -185,7 +197,10 @@ export function KaraokeProvider({ children }) {
             setQueue(data.queue || [])
           }
 
-          if (data.type === "LOAD_VIDEO" || data.type === "STOP_VIDEO") {
+          if (
+            data.type === "LOAD_VIDEO" ||
+            data.type === "STOP_VIDEO"
+          ) {
             setPlayerVersion(v => v + 1)
           }
 
@@ -208,6 +223,7 @@ export function KaraokeProvider({ children }) {
         )
 
         reconnectRef.current += 1
+
         reconnectTimeoutRef.current = setTimeout(connect, timeout)
       }
     }
@@ -227,7 +243,7 @@ export function KaraokeProvider({ children }) {
   }, [deviceId])
 
   // =========================
-  // ACTIONS
+  // ACTIONS (SAFE RETURN FORMAT FIX)
   // =========================
   const addSong = async (songData) => {
     try {
@@ -272,7 +288,6 @@ export function KaraokeProvider({ children }) {
 
       deviceId,
       mySongs,
-      hasActiveSong,
 
       user,
       loadingUser,
