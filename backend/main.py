@@ -71,9 +71,11 @@ clients_lock = asyncio.Lock()
 
 class SongCreate(BaseModel):
     ownerId: str
+    username: str
     title: str
     artist: str
     youtubeId: str
+    
 
 # =====================================================
 # HELPERS
@@ -83,6 +85,7 @@ def row_to_song(r):
     return {
         "id": r[0],
         "ownerId": r[1],
+        "username": r[2],
         "title": r[2],
         "artist": r[3],
         "youtubeId": r[4],
@@ -272,17 +275,18 @@ async def add_song(song: SongCreate):
     status = "queued" if playing else "playing"
 
     execute("""
-        INSERT INTO songs VALUES (:id,:o,:t,:a,:y,:s,:c,:u)
-    """, {
-        "id": song_id,
-        "o": song.ownerId,
-        "t": song.title,
-        "a": song.artist,
-        "y": song.youtubeId,
-        "s": status,
-        "c": now,
-        "u": now
-    })
+    INSERT INTO songs VALUES (:id,:o,:u,:t,:a,:y,:s,:c,:u2)
+""", {
+    "id": song_id,
+    "o": song.ownerId,
+    "u": song.username,   # NUEVO
+    "t": song.title,
+    "a": song.artist,
+    "y": song.youtubeId,
+    "s": status,
+    "c": now,
+    "u2": now
+})
 
     await broadcast_queue()
 
