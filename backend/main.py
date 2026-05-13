@@ -7,20 +7,16 @@ import json
 import time
 import os
 from uuid import uuid4
-from dotenv import load_dotenv
 
 from sqlalchemy import create_engine, text
+import asyncio
 
 # =====================================================
-# ENV
+# ENV (RENDER SAFE)
 # =====================================================
-
-load_dotenv()
 
 API_KEY = os.getenv("YOUTUBE_API_KEY")
 DATABASE_URL = os.getenv("DATABASE_URL")
-
-http_client = httpx.AsyncClient(timeout=10)
 
 # =====================================================
 # APP
@@ -37,7 +33,7 @@ app.add_middleware(
 )
 
 # =====================================================
-# DB (SUPABASE)
+# DB
 # =====================================================
 
 engine = create_engine(
@@ -48,10 +44,26 @@ engine = create_engine(
 )
 
 # =====================================================
-# STATE
+# HTTP CLIENT (SAFE LIFESPAN)
+# =====================================================
+
+http_client = None
+
+@app.on_event("startup")
+async def startup():
+    global http_client
+    http_client = httpx.AsyncClient(timeout=10)
+
+@app.on_event("shutdown")
+async def shutdown():
+    await http_client.aclose()
+
+# =====================================================
+# WEBSOCKET STATE (SAFE CONCURRENCY)
 # =====================================================
 
 clients = set()
+clients_lock = asyncio.Lock()
 
 # =====================================================
 # MODEL
@@ -92,7 +104,7 @@ def execute(q, p={}):
         conn.execute(text(q), p)
 
 # =====================================================
-# QUEUE STATE
+# QUEUE
 # =====================================================
 
 def get_queue():
@@ -121,20 +133,25 @@ def get_current():
     return row_to_song(row) if row else None
 
 # =====================================================
-# BROADCAST
+# BROADCAST (SAFE)
 # =====================================================
 
 async def broadcast(data):
     msg = json.dumps(data)
+
+    async with clients_lock:
+        current = list(clients)
+
     dead = set()
 
-    for ws in clients:
+    for ws in current:
         try:
             await ws.send_text(msg)
         except:
             dead.add(ws)
 
-    clients.difference_update(dead)
+    async with clients_lock:
+        clients.difference_update(dead)
 
 async def broadcast_queue():
     await broadcast({
@@ -155,7 +172,7 @@ async def broadcast_player():
     })
 
 # =====================================================
-# SEARCH
+# SEARCH YOUTUBE
 # =====================================================
 
 @app.get("/search")
@@ -195,7 +212,9 @@ async def search(q: str = Query(...)):
 async def ws(websocket: WebSocket):
 
     await websocket.accept()
-    clients.add(websocket)
+
+    async with clients_lock:
+        clients.add(websocket)
 
     await websocket.send_json({
         "type": "queue_update",
@@ -212,11 +231,13 @@ async def ws(websocket: WebSocket):
     try:
         while True:
             await websocket.receive_text()
+
     except WebSocketDisconnect:
-        clients.discard(websocket)
+        async with clients_lock:
+            clients.discard(websocket)
 
 # =====================================================
-# POST - ADD SONG
+# ADD SONG (ANTI DUP + SAFE STATE)
 # =====================================================
 
 @app.post("/queue/add")
@@ -234,7 +255,9 @@ async def add_song(song: SongCreate):
     if dup:
         raise HTTPException(400, "DUPLICATE")
 
-    playing = fetch_one("SELECT 1 FROM songs WHERE status='playing'")
+    playing = fetch_one("""
+        SELECT id FROM songs WHERE status='playing'
+    """)
 
     status = "queued" if playing else "playing"
 
@@ -259,7 +282,7 @@ async def add_song(song: SongCreate):
     return {"ok": True, "id": song_id}
 
 # =====================================================
-# POST - NEXT
+# NEXT SONG (SAFE TRANSITION)
 # =====================================================
 
 @app.post("/queue/next")
@@ -294,7 +317,7 @@ async def next_song():
     return {"ok": True}
 
 # =====================================================
-# POST - PLAY NOW
+# PLAY NOW
 # =====================================================
 
 @app.post("/queue/playnow/{song_id}")
@@ -315,7 +338,7 @@ async def play_now(song_id: str):
     return {"ok": True}
 
 # =====================================================
-# PUT - EDIT
+# EDIT
 # =====================================================
 
 @app.put("/queue/edit/{song_id}")
@@ -345,7 +368,7 @@ async def edit_song(song_id: str, data: dict):
     return {"ok": True}
 
 # =====================================================
-# PUT - CANCEL
+# CANCEL
 # =====================================================
 
 @app.put("/queue/cancel/{song_id}")
@@ -372,7 +395,7 @@ async def cancel_song(song_id: str):
     return {"ok": True}
 
 # =====================================================
-# DELETE - HARD REMOVE (REAL DELETE)
+# DELETE
 # =====================================================
 
 @app.delete("/queue/hard/{song_id}")
@@ -386,7 +409,7 @@ async def hard_delete(song_id: str):
     return {"ok": True}
 
 # =====================================================
-# EXTRA: CLEAR QUEUE
+# CLEAR QUEUE
 # =====================================================
 
 @app.delete("/queue/clear")
@@ -395,7 +418,7 @@ async def clear_queue():
     execute("""
         UPDATE songs
         SET status='cancelled'
-        WHERE status IN ('queued')
+        WHERE status='queued'
     """)
 
     await broadcast_queue()
@@ -403,7 +426,7 @@ async def clear_queue():
     return {"ok": True}
 
 # =====================================================
-# EXTRA: STATE FULL
+# STATE SNAPSHOT
 # =====================================================
 
 @app.get("/queue/state")

@@ -1,31 +1,33 @@
-import { createContext, useContext, useState } from "react"
+import { createContext, useContext, useState, useRef } from "react"
 import { searchYouTube } from "../services/youtubeApi"
 
 const YouTubeContext = createContext()
 
 export function YouTubeProvider({ children }) {
 
-  // =========================
-  // STATE
-  // =========================
   const [results, setResults] = useState([])
   const [loading, setLoading] = useState(false)
 
-  // =========================
-  // SEARCH SONGS
-  // =========================
+  // evita respuestas fuera de orden (muy común en search rápido)
+  const lastQueryRef = useRef("")
+
   const searchSongs = async (query) => {
 
-    if (!query || query.trim().length < 2) {
+    const cleanQuery = query?.trim()
+
+    if (!cleanQuery || cleanQuery.length < 2) {
       setResults([])
       return
     }
 
+    lastQueryRef.current = cleanQuery
     setLoading(true)
 
     try {
+      const data = await searchYouTube(cleanQuery)
 
-      const data = await searchYouTube(query)
+      // evita que una respuesta vieja pise una nueva
+      if (lastQueryRef.current !== cleanQuery) return
 
       if (Array.isArray(data)) {
         setResults(data)
@@ -34,24 +36,14 @@ export function YouTubeProvider({ children }) {
       }
 
     } catch (err) {
-
       console.error("YouTube Search Error:", err)
-
       setResults([])
-
     } finally {
-
       setLoading(false)
-
     }
-
   }
 
-  // =========================
-  // PROVIDER
-  // =========================
   return (
-
     <YouTubeContext.Provider
       value={{
         results,
@@ -59,13 +51,9 @@ export function YouTubeProvider({ children }) {
         searchSongs,
       }}
     >
-
       {children}
-
     </YouTubeContext.Provider>
-
   )
-
 }
 
 export function useYouTube() {
