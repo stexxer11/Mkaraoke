@@ -100,12 +100,24 @@ def get_user(user_id: str):
     row = fetch_one("""
         SELECT id, artist_name
         FROM users
-        WHERE id = :i
-        LIMIT 1
+        WHERE id=:i
     """, {"i": user_id})
 
     if not row:
-        raise HTTPException(status_code=404, detail="USER_NOT_FOUND")
+        # 👇 CREAR AUTOMÁTICAMENTE EL USUARIO
+        execute("""
+            INSERT INTO users (id, artist_name, created_at)
+            VALUES (:id, :name, :c)
+        """, {
+            "id": user_id,
+            "name": "Anonimo",
+            "c": int(time.time() * 1000)
+        })
+
+        return {
+            "id": user_id,
+            "artistName": "Anonimo"
+        }
 
     return {
         "id": row[0],
