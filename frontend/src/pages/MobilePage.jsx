@@ -36,74 +36,12 @@ function MobilePage() {
   const [editMode, setEditMode] = useState(false)
   const [editSongData, setEditSongData] = useState(null)
 
-  const [nameInput, setNameInput] = useState("")
   const [forceRegister, setForceRegister] = useState(false)
   const [userReady, setUserReady] = useState(false)
 
   const alertOpen = useRef(null)
-  const alertLocked = useRef(false)
   const lastSearch = useRef(0)
   const alertShown = useRef(false)
-
-  // =========================
-  // USER CONTROL (CRÍTICO FIX)
-  // =========================
-  useEffect(() => {
-
-    if (loadingUser) return
-
-    // ❌ NO USER → BLOQUEO TOTAL
-    if (!user || !user.artistName) {
-
-      setForceRegister(true)
-      setUserReady(false)
-
-      if (!alertShown.current) {
-        alertShown.current = true
-
-        Swal.fire({
-          title: "Bienvenido nuevo artista 🎤",
-          text: "Debes crear tu nombre para continuar",
-          input: "text",
-          inputPlaceholder: "Ej: DJ Rolando",
-          background: "#000",
-          color: "#06b6d4",
-          allowOutsideClick: false,
-          allowEscapeKey: false,
-          confirmButtonText: "Crear usuario",
-
-          preConfirm: async (value) => {
-            if (!value || !value.trim()) {
-              Swal.showValidationMessage("Ingresa un nombre válido")
-              return false
-            }
-
-            await registerUser(value.trim())
-          }
-        }).then(() => {
-          alertShown.current = false
-        })
-      }
-
-      return
-    }
-
-    // ✅ USER OK → ENTRA AL SISTEMA
-    setForceRegister(false)
-    setUserReady(true)
-
-  }, [user, loadingUser])
-
-  // =========================
-  // BLOQUEO TOTAL HASTA USER OK
-  // =========================
-  if (loadingUser || forceRegister || !userReady) {
-    return (
-      <div className="min-h-screen bg-black text-white flex items-center justify-center">
-        Inicializando sistema...
-      </div>
-    )
-  }
 
   // =========================
   // RULES
@@ -130,6 +68,7 @@ function MobilePage() {
         s.status !== "done" &&
         s.status !== "cancelled"
     )
+
     return mySongs.length < RULES.MAX_QUEUE_PER_USER
   }
 
@@ -142,9 +81,75 @@ function MobilePage() {
   }
 
   // =========================
+  // USER CONTROL
+  // =========================
+  useEffect(() => {
+
+    if (loadingUser) return
+
+    // NO USER
+    if (!user || !user.artistName) {
+
+      setForceRegister(true)
+      setUserReady(false)
+
+      if (!alertShown.current) {
+
+        alertShown.current = true
+
+        Swal.fire({
+          title: "Bienvenido nuevo artista 🎤",
+          text: "Debes crear tu nombre para continuar",
+          input: "text",
+          inputPlaceholder: "Ej: DJ Rolando",
+          background: "#000",
+          color: "#06b6d4",
+          allowOutsideClick: false,
+          allowEscapeKey: false,
+          confirmButtonText: "Crear usuario",
+
+          preConfirm: async (value) => {
+
+            if (!value || !value.trim()) {
+              Swal.showValidationMessage("Ingresa un nombre válido")
+              return false
+            }
+
+            try {
+
+              await registerUser(value.trim())
+
+              setForceRegister(false)
+              setUserReady(true)
+
+              alertShown.current = false
+
+            } catch (err) {
+
+              Swal.showValidationMessage(
+                err.message || "Error creando usuario"
+              )
+
+              return false
+            }
+          }
+        })
+      }
+
+      return
+    }
+
+    // USER OK
+    setForceRegister(false)
+    setUserReady(true)
+
+  }, [user, loadingUser, registerUser])
+
+  // =========================
   // KARAOKE FILTER
   // =========================
   const isKaraokeQuery = (text) => {
+
     const keywords = [
       "karaoke",
       "instrumental",
@@ -160,7 +165,9 @@ function MobilePage() {
   }
 
   const forceKaraokeQuery = (text) => {
+
     if (isKaraokeQuery(text)) return text
+
     return `${text} karaoke instrumental lyrics`
   }
 
@@ -176,28 +183,43 @@ function MobilePage() {
       }
 
       const now = Date.now()
-      if (now - lastSearch.current < RULES.SEARCH_COOLDOWN_MS) return
+
+      if (now - lastSearch.current < RULES.SEARCH_COOLDOWN_MS) {
+        return
+      }
+
       lastSearch.current = now
 
       setLoading(true)
 
       try {
-        const data = await searchYouTube(forceKaraokeQuery(value))
-        setResults(data || [])
-      } catch {
-        setResults([])
-      }
 
-      setLoading(false)
+        const data = await searchYouTube(
+          forceKaraokeQuery(value)
+        )
+
+        setResults(data || [])
+
+      } catch {
+
+        setResults([])
+
+      } finally {
+
+        setLoading(false)
+      }
 
     }, 600)
   , [])
 
   useEffect(() => {
+
     return () => debouncedSearch.cancel()
+
   }, [debouncedSearch])
 
   const handleSearch = (value) => {
+
     setSearch(value)
     debouncedSearch(value)
   }
@@ -206,6 +228,7 @@ function MobilePage() {
   // ACTIONS
   // =========================
   const handleAddSong = async (song) => {
+
     if (isQueueFull(queue)) return
     if (!canAddSong(queue, deviceId)) return
     if (isDuplicateSong(queue, song.youtubeId, deviceId)) return
@@ -217,13 +240,16 @@ function MobilePage() {
   }
 
   const handleReplaceSong = async (song) => {
+
     if (!editSongData) return
+
     if (currentSong?.id === editSongData.id) return
 
     await editSong(editSongData.id, song)
 
     setEditMode(false)
     setEditSongData(null)
+
     setSearch("")
     setResults([])
   }
@@ -239,22 +265,28 @@ function MobilePage() {
     )
   , [queue, deviceId])
 
-  const myActiveSong = useMemo(() => mySongs[0] || null, [mySongs])
+  const myActiveSong = useMemo(() =>
+    mySongs[0] || null
+  , [mySongs])
 
   const turnsLeft = useMemo(() => {
+
     if (!myActiveSong) return -1
 
     const activeQueue = queue.filter(
       s => s.status === "queued" || s.status === "playing"
     )
 
-    return activeQueue.findIndex(s =>
-      s.id === myActiveSong.id
+    return activeQueue.findIndex(
+      s => s.id === myActiveSong.id
     )
+
   }, [queue, myActiveSong])
 
   const isMyTurn = turnsLeft === 0
-  const isMySongPlaying = currentSong?.id === myActiveSong?.id
+
+  const isMySongPlaying =
+    currentSong?.id === myActiveSong?.id
 
   // =========================
   // ALERT SYSTEM
@@ -263,12 +295,15 @@ function MobilePage() {
 
     if (!myActiveSong) return
 
-    const alertKey = `${myActiveSong.id}-${currentSong?.id}`
+    const alertKey =
+      `${myActiveSong.id}-${currentSong?.id}`
+
     if (alertOpen.current === alertKey) return
 
     alertOpen.current = alertKey
 
     if (isMySongPlaying) {
+
       Swal.fire({
         title: "Disfruta tu canción 🎤",
         html: `<b>${myActiveSong.title}</b>`,
@@ -276,23 +311,47 @@ function MobilePage() {
         color: "#06b6d4",
         showConfirmButton: false
       })
+
       return
     }
 
     showAlert({
-      title: isMyTurn ? "Tu turno 🎤" : "Esperando turno",
+      title: isMyTurn
+        ? "Tu turno 🎤"
+        : "Esperando turno",
+
       html: `<b>${myActiveSong.title}</b>`,
+
       background: "#000",
       color: "#06b6d4",
       showConfirmButton: false
     })
 
-  }, [queue, currentSong, myActiveSong, isMyTurn, isMySongPlaying])
+  }, [
+    queue,
+    currentSong,
+    myActiveSong,
+    isMyTurn,
+    isMySongPlaying
+  ])
+
+  // =========================
+  // BLOQUEO UI
+  // =========================
+  if (loadingUser || forceRegister || !userReady) {
+
+    return (
+      <div className="min-h-screen bg-black text-white flex items-center justify-center">
+        Inicializando sistema...
+      </div>
+    )
+  }
 
   // =========================
   // UI
   // =========================
   return (
+
     <div className="min-h-screen bg-black text-white relative pb-24 overflow-y-auto">
 
       <div className="text-center pt-4 text-zinc-400 text-sm">
@@ -306,20 +365,30 @@ function MobilePage() {
       </div>
 
       <div className="px-4 mt-5">
+
         <input
           value={search}
           onChange={(e) => handleSearch(e.target.value)}
           placeholder="Buscar canción..."
           className="w-full px-4 py-4 rounded-xl bg-black/60 border border-cyan-500/20"
         />
+
       </div>
 
       <div className="px-4 mt-5 space-y-3">
 
-        {loading && <p className="text-zinc-400">Buscando...</p>}
+        {loading && (
+          <p className="text-zinc-400">
+            Buscando...
+          </p>
+        )}
 
         {results.map(song => (
-          <div key={song.youtubeId} className="flex gap-3 p-3 bg-black/60 rounded-xl">
+
+          <div
+            key={song.youtubeId}
+            className="flex gap-3 p-3 bg-black/60 rounded-xl"
+          >
 
             <img
               src={`https://img.youtube.com/vi/${song.youtubeId}/hqdefault.jpg`}
@@ -327,14 +396,23 @@ function MobilePage() {
             />
 
             <div className="flex-1">
-              <p className="font-bold text-sm">{song.title}</p>
-              <p className="text-xs text-zinc-400">{song.artist}</p>
+
+              <p className="font-bold text-sm">
+                {song.title}
+              </p>
+
+              <p className="text-xs text-zinc-400">
+                {song.artist}
+              </p>
+
             </div>
 
             <button
               className="px-4 py-2 bg-cyan-500 text-black rounded-lg"
               onClick={() =>
-                editMode ? handleReplaceSong(song) : handleAddSong(song)
+                editMode
+                  ? handleReplaceSong(song)
+                  : handleAddSong(song)
               }
             >
               +
@@ -347,6 +425,7 @@ function MobilePage() {
       <div className="fixed bottom-0 w-full bg-black/90 text-center py-3 text-zinc-500 border-t border-zinc-800">
         Cola global: {queue.length}
       </div>
+
     </div>
   )
 }
