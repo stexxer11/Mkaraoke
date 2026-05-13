@@ -10,6 +10,7 @@ import Swal from "sweetalert2"
 
 import { useKaraoke } from "../context/KaraokeContext"
 import { searchYouTube } from "../services/youtubeApi"
+import { supabase } from "../supabaseClient"
 
 function MobilePage() {
 
@@ -28,6 +29,31 @@ function MobilePage() {
     MAX_GLOBAL_QUEUE: 50,
     SEARCH_COOLDOWN_MS: 1500,
   }
+
+  // ================= USER =================
+  const [username, setUsername] = useState("")
+  const [userLoaded, setUserLoaded] = useState(false)
+
+  useEffect(() => {
+    const initUser = async () => {
+
+      const { data } = await supabase
+        .from("users")
+        .select("*")
+        .eq("device_id", deviceId)
+        .maybeSingle()
+
+      if (data) {
+        setUsername(data.name)
+        setUserLoaded(true)
+      } else {
+        setUserLoaded(false)
+      }
+    }
+
+    if (deviceId) initUser()
+
+  }, [deviceId])
 
   const isDuplicateSong = (queue, youtubeId, deviceId) =>
     queue.some(s =>
@@ -65,8 +91,18 @@ function MobilePage() {
   const [editMode, setEditMode] = useState(false)
   const [editSongData, setEditSongData] = useState(null)
 
+  // ================= HOLA =================
+  const HeaderUser = () => (
+    userLoaded && (
+      <div className="text-center mt-3">
+        <p className="text-zinc-400 text-sm">Hola</p>
+        <p className="text-cyan-400 font-bold text-lg">{username}</p>
+      </div>
+    )
+  )
+
   // =====================================================
-  // FILTRO KARAOKE (RESTAURADO)
+  // FILTRO KARAOKE
   // =====================================================
   const isKaraokeQuery = (text) => {
     const keywords = [
@@ -157,7 +193,7 @@ function MobilePage() {
   const isMySongPlaying = currentSong?.id === myActiveSong?.id
 
   // =====================================================
-  // ALERT SYSTEM FIXED
+  // ALERT SYSTEM
   // =====================================================
   useEffect(() => {
 
@@ -187,9 +223,6 @@ function MobilePage() {
 
     alertOpen.current = alertKey
 
-    // =====================
-    // PLAYING
-    // =====================
     if (isMySongPlaying) {
 
       alertLocked.current = true
@@ -207,9 +240,6 @@ function MobilePage() {
       return
     }
 
-    // =====================
-    // QUEUE ALERT
-    // =====================
     showAlert({
       title: isMyTurn
         ? "Tu turno está listo 🎤"
@@ -237,7 +267,6 @@ function MobilePage() {
       cancelButtonText: "Cancelar turno",
     }).then(res => {
 
-      // EDITAR
       if (res.isDenied && !isMySongPlaying) {
         alertLocked.current = true
         setEditMode(true)
@@ -246,7 +275,6 @@ function MobilePage() {
         setResults([])
       }
 
-      // CANCELAR
       if (res.dismiss === Swal.DismissReason.cancel) {
 
         Swal.fire({
@@ -294,7 +322,11 @@ function MobilePage() {
     if (!canAddSong(queue, deviceId)) return
     if (isDuplicateSong(queue, song.youtubeId, deviceId)) return
 
-    await addSong(song)
+    await addSong({
+      ...song,
+      owner_id: deviceId,
+      owner_name: username
+    })
 
     setSearch("")
     setResults([])
@@ -311,13 +343,10 @@ function MobilePage() {
     setEditSongData(null)
     setSearch("")
     setResults([])
-
-    alertOpen.current = null
-    alertLocked.current = false
   }
 
   // =====================================================
-  // UI (SIN CAMBIOS)
+  // UI
   // =====================================================
   return (
     <div className="min-h-screen bg-black text-white relative pb-24 overflow-y-auto">
@@ -330,6 +359,8 @@ function MobilePage() {
         <h1 className="text-4xl font-black">
           M<span className="text-cyan-400">KARAOKE</span>
         </h1>
+
+        <HeaderUser />
       </div>
 
       <div className="relative px-4 mt-5">
@@ -356,6 +387,12 @@ function MobilePage() {
             <div className="flex-1">
               <p className="font-bold text-sm">{song.title}</p>
               <p className="text-xs text-zinc-400">{song.artist}</p>
+
+              {song.owner_name && (
+                <p className="text-xs text-cyan-400 mt-1">
+                  {song.owner_name}
+                </p>
+              )}
             </div>
 
             <button
