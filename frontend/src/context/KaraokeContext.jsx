@@ -14,6 +14,7 @@ import {
   nextSongApi,
   playNowApi,
   removeSongApi,
+  registerUserApi,
 } from "../services/karaokeApi"
 
 const KaraokeContext = createContext()
@@ -34,7 +35,15 @@ export function KaraokeProvider({ children }) {
   })
 
   // =====================================================
-  // STATE (SOURCE OF TRUTH)
+  // USER STATE (NUEVO)
+  // =====================================================
+
+  const [username, setUsername] = useState(() => {
+    return localStorage.getItem("mk_username") || ""
+  })
+
+  // =====================================================
+  // STATE
   // =====================================================
 
   const [queue, setQueue] = useState([])
@@ -44,7 +53,7 @@ export function KaraokeProvider({ children }) {
   const reconnectRef = useRef(0)
 
   // =====================================================
-  // DERIVED STATE (GLOBAL FIX)
+  // DERIVED STATE
   // =====================================================
 
   const currentSong = useMemo(() => {
@@ -82,7 +91,7 @@ export function KaraokeProvider({ children }) {
   }
 
   // =====================================================
-  // WEBSOCKET CONNECTION (FIXED SYNC)
+  // WEBSOCKET
   // =====================================================
 
   useEffect(() => {
@@ -100,32 +109,16 @@ export function KaraokeProvider({ children }) {
 
       ws.onopen = () => {
         console.log("WS CONNECTED")
-
         reconnectRef.current = 0
-
-        // sync inicial
-        safeSend({
-          type: "GET_STATE",
-          deviceId
-        })
       }
 
       ws.onmessage = (event) => {
         try {
-
           const data = JSON.parse(event.data)
-
-          // =================================================
-          // QUEUE UPDATE (MAIN SOURCE)
-          // =================================================
 
           if (data.type === "queue_update") {
             setQueue(data.queue || [])
           }
-
-          // =================================================
-          // VIDEO CONTROL (FORCE RELOAD TV)
-          // =================================================
 
           if (
             data.type === "LOAD_VIDEO" ||
@@ -154,8 +147,6 @@ export function KaraokeProvider({ children }) {
 
         reconnectRef.current += 1
 
-        console.log(`WS RECONNECT IN ${timeout}ms`)
-
         setTimeout(connect, timeout)
       }
     }
@@ -170,6 +161,28 @@ export function KaraokeProvider({ children }) {
   }, [deviceId])
 
   // =====================================================
+  // REGISTRO DE USUARIO (NUEVO CRÍTICO)
+  // =====================================================
+
+  useEffect(() => {
+
+    const register = async () => {
+      if (!deviceId) return
+      if (!username) return
+
+      try {
+        await registerUserApi(deviceId, username)
+        localStorage.setItem("mk_username", username)
+      } catch (err) {
+        console.log("USER REGISTER ERROR", err)
+      }
+    }
+
+    register()
+
+  }, [deviceId, username])
+
+  // =====================================================
   // ACTIONS
   // =====================================================
 
@@ -177,6 +190,7 @@ export function KaraokeProvider({ children }) {
     try {
       return await addSongApi({
         ownerId: deviceId,
+        username: username,   // 🔥 FIX IMPORTANTE
         title: songData.title,
         artist: songData.artist,
         youtubeId: songData.youtubeId,
@@ -244,6 +258,8 @@ export function KaraokeProvider({ children }) {
 
       // USER
       deviceId,
+      username,
+      setUsername,
       mySongs,
       hasActiveSong,
 
