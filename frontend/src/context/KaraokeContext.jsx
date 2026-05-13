@@ -8,17 +8,15 @@ import {
 } from "react"
 
 import {
-  getUserApi,
-  createUserApi,
   addSongApi,
   editSongApi,
   cancelSongApi,
   nextSongApi,
   playNowApi,
   removeSongApi,
+  getUserApi,
+  createUserApi,
 } from "../services/karaokeApi"
-
-import { getUserApi, createUserApi } from "../services/karaokeApi"
 
 const KaraokeContext = createContext()
 
