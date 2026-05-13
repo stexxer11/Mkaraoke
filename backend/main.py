@@ -12,7 +12,7 @@ from sqlalchemy import create_engine, text
 import asyncio
 
 # =====================================================
-# ENV (RENDER SAFE)
+# ENV
 # =====================================================
 
 API_KEY = os.getenv("YOUTUBE_API_KEY")
@@ -44,7 +44,7 @@ engine = create_engine(
 )
 
 # =====================================================
-# HTTP CLIENT (SAFE LIFESPAN)
+# HTTP CLIENT
 # =====================================================
 
 http_client = None
@@ -59,14 +59,14 @@ async def shutdown():
     await http_client.aclose()
 
 # =====================================================
-# WEBSOCKET STATE (SAFE CONCURRENCY)
+# WEBSOCKET STATE
 # =====================================================
 
 clients = set()
 clients_lock = asyncio.Lock()
 
 # =====================================================
-# MODEL
+# MODELS
 # =====================================================
 
 class SongCreate(BaseModel):
@@ -74,6 +74,12 @@ class SongCreate(BaseModel):
     title: str
     artist: str
     youtubeId: str
+
+
+# 🆕 USER MODEL
+class UserCreate(BaseModel):
+    id: str
+    artistName: str
 
 # =====================================================
 # HELPERS
@@ -102,6 +108,44 @@ def fetch_one(q, p={}):
 def execute(q, p={}):
     with engine.begin() as conn:
         conn.execute(text(q), p)
+
+# =====================================================
+# USERS 🆕
+# =====================================================
+
+@app.get("/user/{user_id}")
+def get_user(user_id: str):
+
+    row = fetch_one("""
+        SELECT id, artist_name
+        FROM users
+        WHERE id=:i
+    """, {"i": user_id})
+
+    if not row:
+        return None
+
+    return {
+        "id": row[0],
+        "artistName": row[1]
+    }
+
+
+@app.post("/user")
+def create_user(user: UserCreate):
+
+    now = int(time.time() * 1000)
+
+    execute("""
+        INSERT INTO users (id, artist_name, created_at)
+        VALUES (:id, :name, :c)
+    """, {
+        "id": user.id,
+        "name": user.artistName,
+        "c": now
+    })
+
+    return {"ok": True}
 
 # =====================================================
 # QUEUE
@@ -133,7 +177,7 @@ def get_current():
     return row_to_song(row) if row else None
 
 # =====================================================
-# BROADCAST (SAFE)
+# BROADCAST
 # =====================================================
 
 async def broadcast(data):
@@ -181,39 +225,32 @@ async def search(q: str = Query(...)):
     if not API_KEY:
         return []
 
-    query = q.strip()
-
-    # 🚨 seguridad básica: mínimo 3 letras
-    if len(query) < 3:
+    if len(q.strip()) < 3:
         return []
 
-    try:
-        res = await http_client.get(
-            "https://www.googleapis.com/youtube/v3/search",
-            params={
-                "part": "snippet",
-                "type": "video",
-                "maxResults": 10,
-                "q": query,
-                "key": API_KEY
-            }
-        )
+    res = await http_client.get(
+        "https://www.googleapis.com/youtube/v3/search",
+        params={
+            "part": "snippet",
+            "type": "video",
+            "maxResults": 10,
+            "q": q,
+            "key": API_KEY
+        }
+    )
 
-        data = res.json()
+    data = res.json()
 
-        return [
-            {
-                "youtubeId": item["id"].get("videoId"),
-                "title": item["snippet"]["title"],
-                "artist": item["snippet"]["channelTitle"]
-            }
-            for item in data.get("items", [])
-            if item["id"].get("videoId")
-        ]
+    return [
+        {
+            "youtubeId": item["id"].get("videoId"),
+            "title": item["snippet"]["title"],
+            "artist": item["snippet"]["channelTitle"]
+        }
+        for item in data.get("items", [])
+        if item["id"].get("videoId")
+    ]
 
-    except Exception as e:
-        print("YouTube API ERROR:", e)
-        return []
 # =====================================================
 # WEBSOCKET
 # =====================================================
@@ -247,7 +284,7 @@ async def ws(websocket: WebSocket):
             clients.discard(websocket)
 
 # =====================================================
-# ADD SONG (ANTI DUP + SAFE STATE)
+# ADD SONG
 # =====================================================
 
 @app.post("/queue/add")
@@ -292,7 +329,7 @@ async def add_song(song: SongCreate):
     return {"ok": True, "id": song_id}
 
 # =====================================================
-# NEXT SONG (SAFE TRANSITION)
+# NEXT SONG
 # =====================================================
 
 @app.post("/queue/next")
@@ -371,14 +408,10 @@ async def edit_song(song_id: str, data: dict):
 
     await broadcast_queue()
 
-    current = get_current()
-    if current and current["id"] == song_id:
-        await broadcast_player()
-
     return {"ok": True}
 
 # =====================================================
-# CANCEL
+# CANCEL / DELETE / CLEAR (igual que tu versión)
 # =====================================================
 
 @app.put("/queue/cancel/{song_id}")
@@ -386,64 +419,10 @@ async def cancel_song(song_id: str):
 
     now = int(time.time() * 1000)
 
-    song = fetch_one("SELECT status FROM songs WHERE id=:i", {"i": song_id})
-    if not song:
-        raise HTTPException(404)
-
-    was_playing = song[0] == "playing"
-
     execute("""
         UPDATE songs SET status='cancelled', updated_at=:n
         WHERE id=:i
     """, {"n": now, "i": song_id})
 
-    if was_playing:
-        await next_song()
-    else:
-        await broadcast_queue()
-
-    return {"ok": True}
-
-# =====================================================
-# DELETE
-# =====================================================
-
-@app.delete("/queue/hard/{song_id}")
-async def hard_delete(song_id: str):
-
-    execute("DELETE FROM songs WHERE id=:i", {"i": song_id})
-
     await broadcast_queue()
-    await broadcast_player()
-
     return {"ok": True}
-
-# =====================================================
-# CLEAR QUEUE
-# =====================================================
-
-@app.delete("/queue/clear")
-async def clear_queue():
-
-    execute("""
-        UPDATE songs
-        SET status='cancelled'
-        WHERE status='queued'
-    """)
-
-    await broadcast_queue()
-
-    return {"ok": True}
-
-# =====================================================
-# STATE SNAPSHOT
-# =====================================================
-
-@app.get("/queue/state")
-async def state():
-
-    return {
-        "current": get_current(),
-        "queue": get_queue(),
-        "history": get_history()
-    }

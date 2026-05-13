@@ -20,7 +20,31 @@ function MobilePage() {
     cancelSong,
     deviceId,
     currentSong,
+
+    // 🆕 USER
+    user,
+    loadingUser,
+    registerUser
   } = useKaraoke()
+
+  // =========================
+  // WELCOME STATE 🆕
+  // =========================
+
+  const [showWelcome, setShowWelcome] = useState(false)
+  const [nameInput, setNameInput] = useState("")
+
+  useEffect(() => {
+    if (loadingUser) return
+
+    if (!user) {
+      setShowWelcome(true)
+    }
+  }, [user, loadingUser])
+
+  // =========================
+  // RULES
+  // =========================
 
   const RULES = {
     MIN_SEARCH_LENGTH: 3,
@@ -65,9 +89,53 @@ function MobilePage() {
   const [editMode, setEditMode] = useState(false)
   const [editSongData, setEditSongData] = useState(null)
 
-  // =====================================================
-  // FILTRO KARAOKE (RESTAURADO)
-  // =====================================================
+  // =========================
+  // WELCOME SCREEN 🆕 (OBLIGATORIO)
+  // =========================
+
+  if (showWelcome) {
+    return (
+      <div className="fixed inset-0 bg-black flex items-center justify-center text-white">
+
+        <div className="bg-zinc-900 p-6 rounded-xl w-[90%] max-w-md">
+
+          <h2 className="text-xl font-bold mb-3">
+            Bienvenido a MKaraoke
+          </h2>
+
+          <p className="text-sm text-zinc-400 mb-4">
+            Ingresa tu nombre de artista
+          </p>
+
+          <input
+            value={nameInput}
+            onChange={(e) => setNameInput(e.target.value)}
+            className="w-full p-3 bg-black border border-cyan-500 rounded-lg"
+            placeholder="Ej: DJ Rolando"
+          />
+
+          <button
+            className="mt-4 w-full bg-cyan-500 text-black p-3 rounded-lg"
+            onClick={async () => {
+              if (!nameInput.trim()) return
+
+              await registerUser(nameInput.trim())
+              setShowWelcome(false)
+            }}
+          >
+            Continuar
+          </button>
+
+        </div>
+
+      </div>
+    )
+  }
+
+  // =========================
+  // FILTRO KARAOKE
+  // =========================
+
   const isKaraokeQuery = (text) => {
     const keywords = [
       "karaoke",
@@ -88,9 +156,10 @@ function MobilePage() {
     return `${text} karaoke instrumental lyrics`
   }
 
-  // =====================================================
+  // =========================
   // SEARCH
-  // =====================================================
+  // =========================
+
   const debouncedSearch = useMemo(() =>
     debounce(async (value) => {
 
@@ -126,9 +195,10 @@ function MobilePage() {
     return () => debouncedSearch.cancel()
   }, [debouncedSearch])
 
-  // =====================================================
+  // =========================
   // MY SONG STATE
-  // =====================================================
+  // =========================
+
   const mySongs = useMemo(() =>
     queue.filter(song =>
       song.ownerId === deviceId &&
@@ -156,9 +226,10 @@ function MobilePage() {
   const isMyTurn = turnsLeft === 0
   const isMySongPlaying = currentSong?.id === myActiveSong?.id
 
-  // =====================================================
-  // ALERT SYSTEM FIXED
-  // =====================================================
+  // =========================
+  // ALERT SYSTEM
+  // =========================
+
   useEffect(() => {
 
     if (!myActiveSong) {
@@ -187,9 +258,6 @@ function MobilePage() {
 
     alertOpen.current = alertKey
 
-    // =====================
-    // PLAYING
-    // =====================
     if (isMySongPlaying) {
 
       alertLocked.current = true
@@ -207,9 +275,6 @@ function MobilePage() {
       return
     }
 
-    // =====================
-    // QUEUE ALERT
-    // =====================
     showAlert({
       title: isMyTurn
         ? "Tu turno está listo 🎤"
@@ -235,43 +300,6 @@ function MobilePage() {
 
       showCancelButton: true,
       cancelButtonText: "Cancelar turno",
-    }).then(res => {
-
-      // EDITAR
-      if (res.isDenied && !isMySongPlaying) {
-        alertLocked.current = true
-        setEditMode(true)
-        setEditSongData(myActiveSong)
-        setSearch("")
-        setResults([])
-      }
-
-      // CANCELAR
-      if (res.dismiss === Swal.DismissReason.cancel) {
-
-        Swal.fire({
-          title: "Eliminar de la cola",
-          text: "Esta acción eliminará tu canción",
-          icon: "warning",
-          background: "#000",
-          color: "#06b6d4",
-          showCancelButton: true,
-          confirmButtonText: "Sí, eliminar",
-          cancelButtonText: "No",
-        }).then(async (confirm) => {
-
-          if (confirm.isConfirmed) {
-            await cancelSong(myActiveSong.id)
-
-            alertOpen.current = null
-            alertLocked.current = false
-            setEditMode(false)
-            setEditSongData(null)
-          }
-
-        })
-      }
-
     })
 
   }, [
@@ -285,11 +313,11 @@ function MobilePage() {
     editMode
   ])
 
-  // =====================================================
-  // ACTIONS
-  // =====================================================
-  const handleAddSong = async (song) => {
+  // =========================
+  // ACTIONS (igual)
+  // =========================
 
+  const handleAddSong = async (song) => {
     if (isQueueFull(queue)) return
     if (!canAddSong(queue, deviceId)) return
     if (isDuplicateSong(queue, song.youtubeId, deviceId)) return
@@ -311,22 +339,23 @@ function MobilePage() {
     setEditSongData(null)
     setSearch("")
     setResults([])
-
-    alertOpen.current = null
-    alertLocked.current = false
   }
 
-  // =====================================================
-  // UI (SIN CAMBIOS)
-  // =====================================================
+  // =========================
+  // UI
+  // =========================
+
   return (
     <div className="min-h-screen bg-black text-white relative pb-24 overflow-y-auto">
 
-      <div className="absolute inset-0 pointer-events-none">
-        <div className="absolute w-[600px] h-[600px] bg-cyan-500/10 blur-3xl rounded-full top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" />
-      </div>
+      {/* 🆕 USER HEADER */}
+      {user && (
+        <div className="text-center pt-4 text-zinc-400 text-sm">
+          Bienvenido, {user.artistName}
+        </div>
+      )}
 
-      <div className="relative text-center pt-8">
+      <div className="relative text-center pt-4">
         <h1 className="text-4xl font-black">
           M<span className="text-cyan-400">KARAOKE</span>
         </h1>

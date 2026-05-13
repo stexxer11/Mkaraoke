@@ -16,6 +16,12 @@ import {
   removeSongApi,
 } from "../services/karaokeApi"
 
+// 🆕 USER API
+import {
+  getUserApi,
+  createUserApi
+} from "../services/userApi"
+
 const KaraokeContext = createContext()
 
 export function KaraokeProvider({ children }) {
@@ -34,6 +40,13 @@ export function KaraokeProvider({ children }) {
   })
 
   // =========================
+  // USER STATE 🆕
+  // =========================
+
+  const [user, setUser] = useState(null)
+  const [loadingUser, setLoadingUser] = useState(true)
+
+  // =========================
   // STATE
   // =========================
 
@@ -43,6 +56,51 @@ export function KaraokeProvider({ children }) {
   const socketRef = useRef(null)
   const reconnectRef = useRef(0)
   const reconnectTimeoutRef = useRef(null)
+
+  // =========================
+  // LOAD USER 🆕
+  // =========================
+
+  useEffect(() => {
+    const loadUser = async () => {
+      try {
+        const res = await getUserApi(deviceId)
+
+        if (res) {
+          setUser(res)
+        } else {
+          setUser(null)
+        }
+
+      } catch (err) {
+        setUser(null)
+      } finally {
+        setLoadingUser(false)
+      }
+    }
+
+    loadUser()
+  }, [deviceId])
+
+  // =========================
+  // REGISTER USER 🆕
+  // =========================
+
+  const registerUser = async (artistName) => {
+    await createUserApi({
+      id: deviceId,
+      artistName
+    })
+
+    const newUser = {
+      id: deviceId,
+      artistName
+    }
+
+    setUser(newUser)
+
+    return newUser
+  }
 
   // =========================
   // DERIVED STATE
@@ -71,7 +129,7 @@ export function KaraokeProvider({ children }) {
   )
 
   // =========================
-  // SAFE SEND (ROBUSTO)
+  // SAFE SEND
   // =========================
 
   const safeSend = (data) => {
@@ -168,11 +226,20 @@ export function KaraokeProvider({ children }) {
     }
   }
 
-  const editSong = async (id, data) => editSongApi(id, data).catch(() => ({ ok: false }))
-  const cancelSong = async (id) => cancelSongApi(id).catch(() => ({ ok: false }))
-  const playNextSong = async () => nextSongApi().catch(console.log)
-  const playNow = async (id) => playNowApi(id).catch(() => ({ ok: false }))
-  const removeSongById = async (id) => removeSongApi(id).catch(console.log)
+  const editSong = async (id, data) =>
+    editSongApi(id, data).catch(() => ({ ok: false }))
+
+  const cancelSong = async (id) =>
+    cancelSongApi(id).catch(() => ({ ok: false }))
+
+  const playNextSong = async () =>
+    nextSongApi().catch(console.log)
+
+  const playNow = async (id) =>
+    playNowApi(id).catch(() => ({ ok: false }))
+
+  const removeSongById = async (id) =>
+    removeSongApi(id).catch(console.log)
 
   // =========================
   // PROVIDER
@@ -181,6 +248,7 @@ export function KaraokeProvider({ children }) {
   return (
     <KaraokeContext.Provider value={{
 
+      // queue
       queue,
       visibleQueue,
       activeQueue,
@@ -188,14 +256,20 @@ export function KaraokeProvider({ children }) {
 
       playerVersion,
 
+      // device
       deviceId,
       mySongs,
       hasActiveSong,
 
+      // user 🆕
+      user,
+      loadingUser,
+      registerUser,
+
+      // actions
       addSong,
       editSong,
       cancelSong,
-
       playNextSong,
       playNow,
       removeSongById,
@@ -210,4 +284,4 @@ export function KaraokeProvider({ children }) {
 
 export function useKaraoke() {
   return useContext(KaraokeContext)
-}
+} 
