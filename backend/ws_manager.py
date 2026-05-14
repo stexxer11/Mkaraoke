@@ -1,6 +1,7 @@
 import asyncio
 from fastapi import WebSocket
 
+
 class ConnectionManager:
 
     def __init__(self):
@@ -32,3 +33,7 @@ class ConnectionManager:
         if dead:
             async with self.lock:
                 self.active_connections -= dead
+
+
+# 🔥 ESTO ES LO QUE TE FALTABA
+manager = ConnectionManager()
