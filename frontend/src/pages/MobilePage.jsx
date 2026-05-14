@@ -41,9 +41,6 @@ function MobilePage() {
   const [editMode, setEditMode] = useState(false)
   const [editSongData, setEditSongData] = useState(null)
 
-  const [forceRegister, setForceRegister] = useState(false)
-  const [userReady, setUserReady] = useState(false)
-
   const alertOpen = useRef(null)
   const lastSearch = useRef(0)
   const alertShown = useRef(false)
@@ -59,109 +56,75 @@ function MobilePage() {
   }
 
   // =========================
-  // HELPERS
+  // INIT APP (FIX REAL)
   // =========================
-  const isDuplicateSong = (queue, youtubeId, userId) =>
-    queue.some(s =>
-      s.youtubeId === youtubeId &&
-      s.owner_id === userId &&
-      s.status !== "done" &&
-      s.status !== "cancelled"
+  const isAppReady = useMemo(() => {
+    return (
+      !loadingUser &&
+      !!session?.user?.id &&
+      !!user
     )
+  }, [loadingUser, session, user])
 
-  const canAddSong = (queue, userId) => {
-    const mySongs = queue.filter(
-      s =>
-        s.owner_id === userId &&
-        s.status !== "done" &&
-        s.status !== "cancelled"
-    )
-
-    return mySongs.length < RULES.MAX_QUEUE_PER_USER
-  }
-
-  const isQueueFull = (queue) =>
-    queue.length >= RULES.MAX_GLOBAL_QUEUE
-
-  const showAlert = (config) => {
-    if (Swal.isVisible()) Swal.close()
-    return Swal.fire(config)
-  }
-
-  // =========================
-  // USER INIT (FIXED)
-  // =========================
   useEffect(() => {
 
     if (loadingUser) return
-    if (!userId) return
+    if (!session?.user?.id) return
+    if (!user) return
 
-    const init = async () => {
+    const hasName =
+      user.artist_name || user.artistName
 
-      try {
+    if (hasName) return
 
-        // 🔥 FIX: usar user del contexto (NO getUser)
-        if (user?.artist_name) {
-          setUserReady(true)
-          setForceRegister(false)
-          return
+    if (alertShown.current) return
+    alertShown.current = true
+
+    Swal.fire({
+      title: "Bienvenido nuevo artista 🎤",
+      text: "Debes crear tu nombre para continuar",
+      input: "text",
+      inputPlaceholder: "Ej: DJ Rolando",
+
+      background: "#000",
+      color: "#06b6d4",
+
+      allowOutsideClick: false,
+      allowEscapeKey: false,
+
+      confirmButtonText: "Crear usuario",
+
+      preConfirm: async (value) => {
+        const artistName = value?.trim()
+
+        if (!artistName) {
+          Swal.showValidationMessage("Ingresa un nombre válido")
+          return false
         }
 
-        if (!alertShown.current) {
-
-          alertShown.current = true
-          setForceRegister(true)
-          setUserReady(false)
-
-          Swal.fire({
-            title: "Bienvenido nuevo artista 🎤",
-            text: "Debes crear tu nombre para continuar",
-            input: "text",
-            inputPlaceholder: "Ej: DJ Rolando",
-
-            background: "#000",
-            color: "#06b6d4",
-
-            allowOutsideClick: false,
-            allowEscapeKey: false,
-
-            confirmButtonText: "Crear usuario",
-
-            preConfirm: async (value) => {
-
-              const artistName = value?.trim()
-
-              if (!artistName) {
-                Swal.showValidationMessage("Ingresa un nombre válido")
-                return false
-              }
-
-              try {
-
-                await registerUser(artistName)
-
-                setUserReady(true)
-                setForceRegister(false)
-
-                return true
-
-              } catch (error) {
-                console.error(error)
-                Swal.showValidationMessage("Error creando usuario")
-                return false
-              }
-            }
-          })
+        try {
+          await registerUser(artistName)
+          return true
+        } catch (error) {
+          console.error(error)
+          Swal.showValidationMessage("Error creando usuario")
+          return false
         }
-
-      } catch (error) {
-        console.error("INIT USER ERROR:", error)
       }
-    }
+    })
 
-    init()
+  }, [session, loadingUser, user])
 
-  }, [loadingUser, userId, user]) // 🔥 FIX DEPENDENCY
+  // =========================
+  // LOADING GATE (SOLO ESTO CAMBIA)
+  // =========================
+  if (!isAppReady) {
+    return (
+      <div className="min-h-screen bg-black text-white flex items-center justify-center">
+        Inicializando sistema...
+      </div>
+    )
+  }
 
   // =========================
   // KARAOKE FILTER
@@ -230,9 +193,16 @@ function MobilePage() {
   // =========================
   const handleAddSong = async (song) => {
 
-    if (isQueueFull(queue)) return
+    if (queue.length >= RULES.MAX_GLOBAL_QUEUE) return
 
-    if (!canAddSong(queue, userId)) {
+    const mySongs = queue.filter(
+      s =>
+        s.owner_id === userId &&
+        s.status !== "done" &&
+        s.status !== "cancelled"
+    )
+
+    if (mySongs.length >= RULES.MAX_QUEUE_PER_USER) {
       return Swal.fire({
         icon: "warning",
         title: "Límite alcanzado",
@@ -242,7 +212,12 @@ function MobilePage() {
       })
     }
 
-    if (isDuplicateSong(queue, song.youtubeId, userId)) {
+    if (queue.some(s =>
+      s.youtubeId === song.youtubeId &&
+      s.owner_id === userId &&
+      s.status !== "done" &&
+      s.status !== "cancelled"
+    )) {
       return Swal.fire({
         icon: "warning",
         title: "Canción duplicada",
@@ -291,7 +266,7 @@ function MobilePage() {
     currentSong?.id === myActiveSong?.id
 
   // =========================
-  // ALERTS (FIX SAFE)
+  // ALERTS
   // =========================
   useEffect(() => {
 
@@ -318,7 +293,7 @@ function MobilePage() {
       return
     }
 
-    showAlert({
+    Swal.fire({
       title: "Tu turno 🎤",
       html: `<b>${myActiveSong.title}</b>`,
       background: "#000",
@@ -328,17 +303,6 @@ function MobilePage() {
     })
 
   }, [queue, currentSong, myActiveSong, isMySongPlaying])
-
-  // =========================
-  // LOADING
-  // =========================
-  if (loadingUser || forceRegister || !userReady) {
-    return (
-      <div className="min-h-screen bg-black text-white flex items-center justify-center">
-        Inicializando sistema...
-      </div>
-    )
-  }
 
   // =========================
   // UI
