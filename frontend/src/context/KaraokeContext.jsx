@@ -22,9 +22,21 @@ const KaraokeContext = createContext()
 
 export function KaraokeProvider({ children }) {
 
-  // =========================
+  // =====================================================
+  // BOOTSTRAP STATE
+  // =====================================================
+  const [appState, setAppState] = useState("booting")
+  // booting | auth | ready | error
+
+  const [user, setUser] = useState(null)
+  const [queue, setQueue] = useState([])
+  const [playerVersion, setPlayerVersion] = useState(0)
+
+  const socketRef = useRef(null)
+
+  // =====================================================
   // DEVICE ID
-  // =========================
+  // =====================================================
   const [deviceId] = useState(() => {
     const saved = localStorage.getItem("mk_device_id")
     if (saved) return saved
@@ -34,210 +46,139 @@ export function KaraokeProvider({ children }) {
     return id
   })
 
-  // =========================
-  // PHASE (CLAVE REAL DEL FIX)
-  // =========================
-  const [phase, setPhase] = useState("booting")
-  // booting | onboarding | ready
-
-  // =========================
-  // USER
-  // =========================
-  const [user, setUser] = useState(null)
-
-  // =========================
-  // QUEUE
-  // =========================
-  const [queue, setQueue] = useState([])
-  const [playerVersion, setPlayerVersion] = useState(0)
-
-  // =========================
-  // WS
-  // =========================
-  const socketRef = useRef(null)
-  const reconnectRef = useRef(0)
-  const reconnectTimeoutRef = useRef(null)
-
-  // =========================
-  // BOOTSTRAP USER (SOLO 1 VEZ)
-  // =========================
+  // =====================================================
+  // LOAD USER (BOOTSTRAP STEP 1)
+  // =====================================================
   useEffect(() => {
-    if (!deviceId) return
 
-    const init = async () => {
-      setPhase("booting")
-
+    const loadUser = async () => {
       try {
+        setAppState("booting")
+
         const res = await getUserApi(deviceId)
 
         if (res?.id && res?.artist_name) {
           setUser(res)
-          setPhase("ready")
+          setAppState("ready")
         } else {
-          setUser(res) // puede venir null artist_name
-          setPhase("onboarding")
+          setUser(res?.id ? res : null)
+          setAppState("auth")
         }
 
       } catch (err) {
-        console.log("USER LOAD ERROR:", err)
-        setUser(null)
-        setPhase("onboarding")
+        console.log(err)
+        setAppState("error")
       }
     }
 
-    init()
+    if (deviceId) loadUser()
+
   }, [deviceId])
 
-  // =========================
+  // =====================================================
   // REGISTER USER
-  // =========================
+  // =====================================================
   const registerUser = async (artistName) => {
+
+    const clean = artistName?.trim()
+    if (!clean) return null
+
     try {
-      const clean = artistName?.trim()
-      if (!clean) throw new Error("Nombre inválido")
 
       const payload = {
         id: deviceId,
-        artistName: clean,
+        artistName: clean
       }
 
       await createUserApi(payload)
 
       setUser(payload)
-      setPhase("ready")
+      setAppState("ready")
 
       return payload
+
     } catch (err) {
       console.log("CREATE USER ERROR:", err)
       return null
     }
   }
 
-  // =========================
-  // DERIVADOS
-  // =========================
+  // =====================================================
+  // DERIVED STATE
+  // =====================================================
   const currentSong = useMemo(
-    () => queue.find(s => s.status === "playing") || null,
+    () => queue?.find(s => s.status === "playing") || null,
     [queue]
   )
 
   const activeQueue = useMemo(
-    () => queue.filter(
+    () => (queue || []).filter(
       s => s.status === "queued" || s.status === "playing"
     ),
     [queue]
   )
 
-  const mySongs = useMemo(
-    () => activeQueue.filter(
-      s => String(s.owner_id) === String(deviceId)
-    ),
-    [activeQueue, deviceId]
-  )
+  const mySongs = useMemo(() => {
+    if (!Array.isArray(queue)) return []
+    if (!user?.id) return []
 
-  const visibleQueue = useMemo(
-    () => queue.filter(
-      s => s.status !== "done" && s.status !== "cancelled"
-    ),
-    [queue]
-  )
+    return activeQueue.filter(
+      s => String(s.owner_id) === String(user.id)
+    )
+  }, [activeQueue, user, queue])
 
-  // =========================
-  // SAFE WS SEND
-  // =========================
-  const safeSend = (data) => {
-    const ws = socketRef.current
-    if (!ws || ws.readyState !== WebSocket.OPEN) return
-    ws.send(JSON.stringify(data))
-  }
-
-  // =========================
-  // WEBSOCKET
-  // =========================
+  // =====================================================
+  // WEBSOCKET (solo ready)
+  // =====================================================
   useEffect(() => {
-    if (phase === "booting") return
 
-    let shouldReconnect = true
+    if (appState !== "ready") return
 
-    const connect = () => {
-      const base = import.meta.env.VITE_WS_URL
+    const ws = new WebSocket(
+      import.meta.env.VITE_WS_URL?.replace("https", "wss") + "/ws"
+    )
 
-      if (!base) return
+    socketRef.current = ws
 
-      const url = base
-        .replace("https://", "wss://")
-        .replace("http://", "ws://")
+    ws.onopen = () => {
+      console.log("WS connected")
+    }
 
-      const ws = new WebSocket(`${url}/ws`)
-      socketRef.current = ws
+    ws.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data)
 
-      ws.onopen = () => {
-        reconnectRef.current = 0
-      }
-
-      ws.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data)
-
-          if (data.type === "queue_update") {
-            setQueue(data.queue || [])
-          }
-
-          if (
-            data.type === "LOAD_VIDEO" ||
-            data.type === "STOP_VIDEO"
-          ) {
-            setPlayerVersion(v => v + 1)
-          }
-
-        } catch (err) {
-          console.log("WS PARSE ERROR", err)
+        if (data.type === "queue_update") {
+          setQueue(data.queue || [])
         }
-      }
 
-      ws.onerror = () => console.log("WS ERROR")
+        if (data.type === "LOAD_VIDEO" || data.type === "STOP_VIDEO") {
+          setPlayerVersion(v => v + 1)
+        }
 
-      ws.onclose = () => {
-        if (!shouldReconnect) return
-
-        const timeout = Math.min(
-          1000 * 2 ** reconnectRef.current,
-          10000
-        )
-
-        reconnectRef.current += 1
-
-        reconnectTimeoutRef.current =
-          setTimeout(connect, timeout)
+      } catch (e) {
+        console.log("WS parse error", e)
       }
     }
 
-    connect()
+    ws.onerror = () => console.log("WS error")
 
-    return () => {
-      shouldReconnect = false
-      if (reconnectTimeoutRef.current) {
-        clearTimeout(reconnectTimeoutRef.current)
-      }
-      socketRef.current?.close()
-    }
+    ws.onclose = () => console.log("WS closed")
 
-  }, [phase])
+    return () => ws.close()
 
-  // =========================
+  }, [appState])
+
+  // =====================================================
   // ACTIONS
-  // =========================
+  // =====================================================
   const addSong = async (songData) => {
-    try {
-      return await addSongApi({
-        ownerId: deviceId,
-        title: songData.title,
-        artist: songData.artist,
-        youtubeId: songData.youtubeId,
-      })
-    } catch (err) {
-      return { ok: false, error: err.message }
-    }
+    return addSongApi({
+      ownerId: deviceId,
+      title: songData.title,
+      artist: songData.artist,
+      youtubeId: songData.youtubeId,
+    })
   }
 
   const editSong = async (id, data) =>
@@ -255,26 +196,27 @@ export function KaraokeProvider({ children }) {
   const removeSongById = async (id) =>
     removeSongApi(id).catch(console.log)
 
-  // =========================
+  // =====================================================
   // PROVIDER
-  // =========================
+  // =====================================================
   return (
     <KaraokeContext.Provider value={{
 
       // STATE
-      phase,
-      user,
-      loadingUser: phase === "booting",
+      appState,
+      isBooting: appState === "booting",
+      isAuth: appState === "auth",
+      isReady: appState === "ready",
+      isError: appState === "error",
 
+      // DATA
+      user,
       queue,
-      visibleQueue,
-      activeQueue,
       currentSong,
-      playerVersion,
       mySongs,
 
-      // IDENTITY
-      deviceId,
+      // WS VERSION
+      playerVersion,
 
       // ACTIONS
       registerUser,
@@ -285,7 +227,8 @@ export function KaraokeProvider({ children }) {
       playNow,
       removeSongById,
 
-      safeSend,
+      deviceId,
+
     }}>
       {children}
     </KaraokeContext.Provider>
