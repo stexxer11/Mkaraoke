@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, Query
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
@@ -11,8 +11,6 @@ from uuid import uuid4
 
 from database import engine
 from schemas import UserCreate, SongCreate, SongUpdate
-from ws_manager import manager
-
 
 # =====================================================
 # ENV
@@ -36,7 +34,6 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(lifespan=lifespan)
-
 
 app.add_middleware(
     CORSMiddleware,
@@ -75,7 +72,7 @@ def execute(query, params=None):
 
 
 # =====================================================
-# SERIALIZERS
+# SERIALIZER
 # =====================================================
 
 def serialize_song(row):
@@ -94,62 +91,7 @@ def serialize_song(row):
 
 
 # =====================================================
-# QUEUE HELPERS
-# =====================================================
-
-def get_queue():
-    rows = fetch_all("""
-        SELECT id, owner_id, title, artist, youtube_id, status, created_at, updated_at
-        FROM songs
-        WHERE status IN ('queued','playing')
-        ORDER BY created_at ASC
-    """)
-    return [serialize_song(r) for r in rows]
-
-
-def get_current_song():
-    row = fetch_one("""
-        SELECT id, owner_id, title, artist, youtube_id, status, created_at, updated_at
-        FROM songs
-        WHERE status='playing'
-        LIMIT 1
-    """)
-    return serialize_song(row)
-
-
-# =====================================================
-# BROADCAST
-# =====================================================
-
-async def safe_broadcast(data: dict):
-    try:
-        await manager.broadcast(data)
-    except Exception as e:
-        print("WS broadcast error:", e)
-
-
-async def broadcast_queue():
-    await safe_broadcast({
-        "type": "queue_update",
-        "queue": get_queue()
-    })
-
-
-async def broadcast_player():
-    current = get_current_song()
-
-    if not current:
-        await safe_broadcast({"type": "STOP_VIDEO"})
-        return
-
-    await safe_broadcast({
-        "type": "LOAD_VIDEO",
-        "song": current
-    })
-
-
-# =====================================================
-# SEARCH
+# SEARCH YOUTUBE
 # =====================================================
 
 @app.get("/search")
@@ -190,35 +132,7 @@ async def search(q: str = Query(...)):
 
 
 # =====================================================
-# WS
-# =====================================================
-
-@app.websocket("/ws")
-async def websocket_endpoint(websocket: WebSocket):
-    await manager.connect(websocket)
-
-    try:
-        await websocket.send_json({
-            "type": "queue_update",
-            "queue": get_queue(),
-        })
-
-        current = get_current_song()
-        if current:
-            await websocket.send_json({
-                "type": "LOAD_VIDEO",
-                "song": current,
-            })
-
-        while True:
-            await websocket.receive_text()
-
-    except WebSocketDisconnect:
-        await manager.disconnect(websocket)
-
-
-# =====================================================
-# ADD SONG (FIX ATÓMICO)
+# ADD SONG (SIN WS)
 # =====================================================
 
 @app.post("/queue/add")
@@ -226,47 +140,46 @@ async def add_song(song: SongCreate):
 
     song_id = str(uuid4())
 
-    with engine.begin() as conn:
+    try:
+        with engine.begin() as conn:
 
-        playing = conn.execute(text("""
-            SELECT id FROM songs
-            WHERE status='playing'
-            FOR UPDATE
-            LIMIT 1
-        """)).fetchone()
+            playing = conn.execute(text("""
+                SELECT id FROM songs
+                WHERE status='playing'
+                LIMIT 1
+                FOR UPDATE
+            """)).fetchone()
 
-        status = "queued" if playing else "playing"
+            status = "queued" if playing else "playing"
 
-        conn.execute(text("""
-            INSERT INTO songs (
-                id, owner_id, title, artist, youtube_id,
-                status, created_at, updated_at
-            )
-            VALUES (
-                :id, :owner_id, :title, :artist, :youtube_id,
-                :status, :created_at, :updated_at
-            )
-        """), {
-            "id": song_id,
-            "owner_id": song.ownerId,
-            "title": song.title,
-            "artist": song.artist,
-            "youtube_id": song.youtubeId,
-            "status": status,
-            "created_at": now_ms(),
-            "updated_at": now_ms(),
-        })
+            conn.execute(text("""
+                INSERT INTO songs (
+                    id, owner_id, title, artist, youtube_id,
+                    status, created_at, updated_at
+                )
+                VALUES (
+                    :id, :owner_id, :title, :artist, :youtube_id,
+                    :status, :created_at, :updated_at
+                )
+            """), {
+                "id": song_id,
+                "owner_id": song.owner_id,
+                "title": song.title,
+                "artist": song.artist,
+                "youtube_id": song.youtube_id,
+                "status": status,
+                "created_at": now_ms(),
+                "updated_at": now_ms(),
+            })
 
-    await broadcast_queue()
+        return {"ok": True, "id": song_id, "status": status}
 
-    if status == "playing":
-        await broadcast_player()
-
-    return {"ok": True, "id": song_id}
+    except Exception as e:
+        raise HTTPException(500, str(e))
 
 
 # =====================================================
-# NEXT SONG (FIX ATÓMICO)
+# NEXT SONG
 # =====================================================
 
 @app.post("/queue/next")
@@ -285,7 +198,6 @@ async def next_song():
             WHERE status='queued'
             ORDER BY created_at ASC
             LIMIT 1
-            FOR UPDATE
         """)).fetchone()
 
         if nxt:
@@ -294,9 +206,6 @@ async def next_song():
                 SET status='playing', updated_at=:t
                 WHERE id=:id
             """), {"t": now_ms(), "id": nxt[0]})
-
-    await broadcast_queue()
-    await broadcast_player()
 
     return {"ok": True}
 
@@ -319,12 +228,11 @@ async def edit_song(song_id: str, data: SongUpdate):
     """, {
         "title": data.title,
         "artist": data.artist,
-        "youtube_id": data.youtubeId,
+        "youtube_id": data.youtube_id,
         "t": now_ms(),
         "id": song_id,
     })
 
-    await broadcast_queue()
     return {"ok": True}
 
 
@@ -341,5 +249,4 @@ async def cancel_song(song_id: str):
         WHERE id=:id
     """, {"t": now_ms(), "id": song_id})
 
-    await broadcast_queue()
     return {"ok": True}

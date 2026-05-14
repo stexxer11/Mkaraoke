@@ -7,8 +7,8 @@ const safeRequest = async (request, name) => {
   try {
     const response = await request
 
-    if (!response) {
-      throw new Error(`${name}: NO_RESPONSE`)
+    if (!response?.data) {
+      throw new Error(`${name}: EMPTY_RESPONSE`)
     }
 
     return response.data
@@ -22,16 +22,9 @@ const safeRequest = async (request, name) => {
       error?.message ||
       "UNKNOWN_ERROR"
 
-    console.error(`API ERROR [${name}]`, {
-      status,
-      message,
-    })
+    console.error(`API ERROR [${name}]`, { status, message })
 
-    throw {
-      status,
-      message,
-      original: error
-    }
+    throw { status, message, original: error }
   }
 }
 
@@ -60,10 +53,9 @@ export const removeSongApi = (id) =>
   safeRequest(api.delete(`/queue/hard/${id}`), "REMOVE_SONG")
 
 // =========================
-// USERS (FIX IMPORTANTE)
+// USERS (NORMALIZADO)
 // =========================
 
-// ✔ siempre devuelve usuario normalizado
 export const getUserApi = async (userId) => {
   const data = await safeRequest(
     api.get(`/user/${userId}`),
@@ -83,13 +75,13 @@ export const createUserApi = async (data) => {
 }
 
 // =========================
-// NORMALIZER (🔥 CLAVE)
+// NORMALIZER (🔥 CRÍTICO)
 // =========================
 const normalizeUser = (user) => {
   if (!user) return null
 
   return {
     id: user.id,
-    artist_name: user.artist_name || user.artistName || null,
+    artist_name: user.artist_name ?? user.artistName ?? null,
   }
 }

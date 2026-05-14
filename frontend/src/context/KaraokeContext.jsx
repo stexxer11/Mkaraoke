@@ -24,7 +24,7 @@ const KaraokeContext = createContext()
 export function KaraokeProvider({ children }) {
 
   // =========================
-  // STATE MACHINE CLARA
+  // STATE MACHINE
   // =========================
   const [appState, setAppState] = useState("BOOTING")
   const [session, setSession] = useState(null)
@@ -40,45 +40,39 @@ export function KaraokeProvider({ children }) {
     [queue]
   )
 
-  const currentSong = useMemo(() => {
-    return safeQueue.find(s => s?.status === "playing") || null
-  }, [safeQueue])
+  const currentSong = useMemo(
+    () => safeQueue.find(s => s?.status === "playing") || null,
+    [safeQueue]
+  )
 
   // =========================
-  // INIT SUPABASE SESSION
+  // INIT AUTH
   // =========================
   useEffect(() => {
 
     const init = async () => {
       setAppState("BOOTING")
 
-      try {
-        const {
-          data: { session }
-        } = await supabase.auth.getSession()
+      const {
+        data: { session }
+      } = await supabase.auth.getSession()
 
-        setSession(session || null)
+      setSession(session || null)
+      setAppState("CHECK_SESSION")
 
-        setAppState("CHECK_SESSION")
-
-        if (!session?.user) {
-          setAppState("AUTH")
-          return
-        }
-
-        const profile = await getUserApi(session.user.id)
-
-        if (profile?.id && profile?.artist_name) {
-          setUser(profile)
-          setAppState("READY")
-        } else {
-          setUser(null)
-          setAppState("PROFILE") // 👈 CLAVE
-        }
-
-      } catch (err) {
-        console.error("BOOT ERROR", err)
+      if (!session?.user) {
         setAppState("AUTH")
+        return
+      }
+
+      const profile = await getUserApi(session.user.id)
+
+      if (profile?.id && profile?.artist_name) {
+        setUser(profile)
+        setAppState("READY")
+      } else {
+        setUser(null)
+        setAppState("PROFILE")
       }
     }
 
@@ -108,7 +102,6 @@ export function KaraokeProvider({ children }) {
     )
 
     return () => listener.subscription.unsubscribe()
-
   }, [])
 
   // =========================
@@ -144,14 +137,14 @@ export function KaraokeProvider({ children }) {
     })
   }
 
-  const editSong = async (id, data) => editSongApi(id, data)
-  const cancelSong = async (id) => cancelSongApi(id)
-  const playNextSong = async () => nextSongApi()
-  const playNow = async (id) => playNowApi(id)
-  const removeSongById = async (id) => removeSongApi(id)
+  const editSong = (id, data) => editSongApi(id, data)
+  const cancelSong = (id) => cancelSongApi(id)
+  const playNextSong = () => nextSongApi()
+  const playNow = (id) => playNowApi(id)
+  const removeSongById = (id) => removeSongApi(id)
 
   // =========================
-  // FLAGS LIMPIOS
+  // FLAGS
   // =========================
   const isBooting = appState === "BOOTING"
   const isChecking = appState === "CHECK_SESSION"
