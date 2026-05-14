@@ -2,7 +2,6 @@ import {
   useState,
   useEffect,
   useRef,
-  useMemo,
 } from "react"
 
 import Swal from "sweetalert2"
@@ -16,13 +15,13 @@ function MobilePage() {
   const {
     session,
     user,
-    loadingUser,
+    isAuth,
+    isProfile,
+    isReady,
 
     queue = [],
-    currentSong,
 
     registerUser,
-    loadUserFromSession,
     addSong,
   } = useKaraoke()
 
@@ -38,62 +37,46 @@ function MobilePage() {
   const [results, setResults] = useState([])
   const [loading, setLoading] = useState(false)
 
-  const authModalShown = useRef(false)
+  const modalShown = useRef(false)
 
   // =========================
-  // BOOT FLOW (SUPABASE AUTH)
+  // PROFILE MODAL (FIXED)
   // =========================
   useEffect(() => {
 
-    if (loadingUser) return
-    if (!session?.user) return
+    if (!isProfile) return
+    if (modalShown.current) return
 
-    const run = async () => {
+    modalShown.current = true
 
-      const profile = await loadUserFromSession(session.user.id)
+    Swal.fire({
+      title: "Bienvenido 🎤",
+      text: "Crea tu nombre artístico",
+      input: "text",
+      background: "#000",
+      color: "#06b6d4",
+      allowOutsideClick: false,
+      confirmButtonText: "Crear",
 
-      // 👇 NO EXISTE PERFIL → pedir nombre
-      if (!profile) {
+      preConfirm: async (value) => {
+        const name = value?.trim()
 
-        if (authModalShown.current) return
-        authModalShown.current = true
+        if (!name) {
+          Swal.showValidationMessage("Nombre inválido")
+          return false
+        }
 
-        Swal.fire({
-          title: "Bienvenido 🎤",
-          text: "Crea tu nombre artístico",
-          input: "text",
-          background: "#000",
-          color: "#06b6d4",
-          allowOutsideClick: false,
-          confirmButtonText: "Crear",
-
-          preConfirm: async (value) => {
-            const name = value?.trim()
-
-            if (!name) {
-              Swal.showValidationMessage("Nombre inválido")
-              return false
-            }
-
-            await registerUser(name)
-          }
-        })
-
-        return
+        await registerUser(name)
       }
-    }
+    })
 
-    run()
-
-  }, [session, loadingUser])
+  }, [isProfile, registerUser])
 
   // =========================
-  // DEBOUNCE SEARCH SAFE
+  // DEBOUNCE (STABLE - NO RECREA)
   // =========================
-  const debounceRef = useRef(null)
-
-  if (!debounceRef.current) {
-    debounceRef.current = debounce(async (value) => {
+  const debounceRef = useRef(
+    debounce(async (value) => {
 
       if (!value || value.length < 3) {
         setResults([])
@@ -105,12 +88,14 @@ function MobilePage() {
       try {
         const res = await searchYouTube(value)
         setResults(res || [])
+      } catch {
+        setResults([])
       } finally {
         setLoading(false)
       }
 
     }, 500)
-  }
+  )
 
   const handleSearch = (value) => {
     setSearch(value)
@@ -118,7 +103,7 @@ function MobilePage() {
   }
 
   // =========================
-  // ADD SONG
+  // ADD SONG SAFE
   // =========================
   const handleAddSong = async (song) => {
     await addSong(song)
@@ -127,17 +112,9 @@ function MobilePage() {
   }
 
   // =========================
-  // BOOT STATES (IMPORTANT)
+  // LOADING STATES (CLEAN)
   // =========================
-  if (loadingUser) {
-    return (
-      <div className="min-h-screen bg-black text-white flex items-center justify-center">
-        Cargando usuario...
-      </div>
-    )
-  }
-
-  if (!session?.user) {
+  if (isAuth) {
     return (
       <div className="min-h-screen bg-black text-white flex items-center justify-center">
         Iniciando sesión...
@@ -145,10 +122,18 @@ function MobilePage() {
     )
   }
 
-  if (!user) {
+  if (isProfile) {
     return (
       <div className="min-h-screen bg-black text-white flex items-center justify-center">
         Preparando perfil...
+      </div>
+    )
+  }
+
+  if (!isReady) {
+    return (
+      <div className="min-h-screen bg-black text-white flex items-center justify-center">
+        Cargando sistema...
       </div>
     )
   }
@@ -160,7 +145,7 @@ function MobilePage() {
     <div className="min-h-screen bg-black text-white pb-24">
 
       <div className="text-center pt-4 text-sm text-zinc-400">
-        Bienvenido, {user.artist_name}
+        Bienvenido, {user?.artist_name}
       </div>
 
       <h1 className="text-center text-4xl font-black mt-3">
@@ -178,10 +163,15 @@ function MobilePage() {
 
       <div className="px-4 mt-4 space-y-3">
 
-        {loading && <p className="text-zinc-400">Buscando...</p>}
+        {loading && (
+          <p className="text-zinc-400">Buscando...</p>
+        )}
 
         {results.map(song => (
-          <div key={song.youtubeId} className="flex gap-3 p-3 bg-black/60 rounded-xl">
+          <div
+            key={song.youtubeId}
+            className="flex gap-3 p-3 bg-black/60 rounded-xl"
+          >
 
             <img
               src={`https://img.youtube.com/vi/${song.youtubeId}/hqdefault.jpg`}

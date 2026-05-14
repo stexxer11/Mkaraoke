@@ -2,28 +2,26 @@ from pydantic import BaseModel, Field, ConfigDict
 from typing import Optional
 
 
-# =====================================================
+# =========================
 # USER
-# =====================================================
-
+# =========================
 class UserCreate(BaseModel):
     model_config = ConfigDict(
         populate_by_name=True,
-        extra="ignore"
+        extra="forbid"   # 🔥 mejor que ignore en producción
     )
 
     id: str
     artist_name: str = Field(alias="artistName")
 
 
-# =====================================================
+# =========================
 # SONG CREATE
-# =====================================================
-
+# =========================
 class SongCreate(BaseModel):
     model_config = ConfigDict(
         populate_by_name=True,
-        extra="ignore"
+        extra="forbid"
     )
 
     owner_id: str = Field(alias="ownerId")
@@ -32,14 +30,13 @@ class SongCreate(BaseModel):
     youtube_id: str = Field(alias="youtubeId")
 
 
-# =====================================================
+# =========================
 # SONG UPDATE
-# =====================================================
-
+# =========================
 class SongUpdate(BaseModel):
     model_config = ConfigDict(
         populate_by_name=True,
-        extra="ignore"
+        extra="forbid"
     )
 
     title: Optional[str] = None
