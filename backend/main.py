@@ -19,7 +19,7 @@ import time
 from uuid import uuid4
 
 from database import engine
-from models import (
+from schemas import (
     UserCreate,
     SongCreate,
     SongUpdate,
