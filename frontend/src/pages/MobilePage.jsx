@@ -18,14 +18,19 @@ function MobilePage() {
     addSong,
     editSong,
     cancelSong,
-    deviceId,
     currentSong,
 
+    session,
     user,
     loadingUser,
     registerUser,
-    getUser // 👈 SOLO AGREGADO (NECESARIO)
+    getUser
   } = useKaraoke()
+
+  // =========================
+  // USER
+  // =========================
+  const userId = session?.user?.id
 
   // =========================
   // STATE
@@ -45,7 +50,7 @@ function MobilePage() {
   const alertShown = useRef(false)
 
   // =========================
-  // RULES (NO TOCADO)
+  // RULES
   // =========================
   const RULES = {
     MIN_SEARCH_LENGTH: 3,
@@ -54,18 +59,22 @@ function MobilePage() {
     SEARCH_COOLDOWN_MS: 1500,
   }
 
-  const isDuplicateSong = (queue, youtubeId, deviceId) =>
+  // =========================
+  // HELPERS
+  // =========================
+  const isDuplicateSong = (queue, youtubeId, userId) =>
     queue.some(s =>
       s.youtubeId === youtubeId &&
-      s.ownerId === deviceId &&
+      s.owner_id === userId &&
       s.status !== "done" &&
       s.status !== "cancelled"
     )
 
-  const canAddSong = (queue, deviceId) => {
+  const canAddSong = (queue, userId) => {
+
     const mySongs = queue.filter(
       s =>
-        s.ownerId === deviceId &&
+        s.owner_id === userId &&
         s.status !== "done" &&
         s.status !== "cancelled"
     )
@@ -77,33 +86,42 @@ function MobilePage() {
     queue.length >= RULES.MAX_GLOBAL_QUEUE
 
   const showAlert = (config) => {
-    if (Swal.isVisible()) Swal.close()
+
+    if (Swal.isVisible()) {
+      Swal.close()
+    }
+
     return Swal.fire(config)
   }
 
   // =========================
-  // 🔥 FIX USER CONTROL (CORREGIDO)
+  // USER INIT
   // =========================
   useEffect(() => {
 
     if (loadingUser) return
+    if (!userId) return
 
     const init = async () => {
 
       try {
-        const u = await getUser(deviceId)
 
-        if (u?.artistName) {
+        const profile = await getUser()
+
+        // usuario existe
+        if (profile?.artist_name) {
+
           setUserReady(true)
           setForceRegister(false)
+
           return
         }
 
-      } catch (err) {
-        // 👇 SOLO SI NO EXISTE
+        // nuevo usuario
         if (!alertShown.current) {
 
           alertShown.current = true
+
           setForceRegister(true)
           setUserReady(false)
 
@@ -112,48 +130,82 @@ function MobilePage() {
             text: "Debes crear tu nombre para continuar",
             input: "text",
             inputPlaceholder: "Ej: DJ Rolando",
+
             background: "#000",
             color: "#06b6d4",
+
             allowOutsideClick: false,
             allowEscapeKey: false,
+
             confirmButtonText: "Crear usuario",
 
             preConfirm: async (value) => {
 
-              if (!value || !value.trim()) {
-                Swal.showValidationMessage("Ingresa un nombre válido")
+              const artistName = value?.trim()
+
+              if (!artistName) {
+
+                Swal.showValidationMessage(
+                  "Ingresa un nombre válido"
+                )
+
                 return false
               }
 
               try {
-                await registerUser(value.trim())
 
-                // 🔥 recargar usuario REAL desde backend
-                const newUser = await getUser(deviceId)
+                await registerUser(artistName)
 
-                if (newUser?.artistName) {
+                const newUser = await getUser()
+
+                if (newUser?.artist_name) {
+
                   setUserReady(true)
                   setForceRegister(false)
-                  alertShown.current = false
+
                   return true
                 }
 
-              } catch (e) {
-                Swal.showValidationMessage("Error creando usuario")
+                Swal.showValidationMessage(
+                  "No se pudo crear el perfil"
+                )
+
+                return false
+
+              } catch (error) {
+
+                console.error(error)
+
+                Swal.showValidationMessage(
+                  "Error creando usuario"
+                )
+
                 return false
               }
             }
           })
         }
+
+      } catch (error) {
+
+        console.error("INIT USER ERROR:", error)
+
+        Swal.fire({
+          icon: "error",
+          title: "Error",
+          text: "No se pudo cargar el usuario",
+          background: "#000",
+          color: "#06b6d4"
+        })
       }
     }
 
     init()
 
-  }, [deviceId, loadingUser])
+  }, [loadingUser, userId])
 
   // =========================
-  // KARAOKE FILTER (NO TOCADO)
+  // KARAOKE FILTER
   // =========================
   const isKaraokeQuery = (text) => {
 
@@ -173,25 +225,33 @@ function MobilePage() {
 
   const forceKaraokeQuery = (text) => {
 
-    if (isKaraokeQuery(text)) return text
+    if (isKaraokeQuery(text)) {
+      return text
+    }
 
     return `${text} karaoke instrumental lyrics`
   }
 
   // =========================
-  // SEARCH (NO TOCADO)
+  // SEARCH
   // =========================
   const debouncedSearch = useMemo(() =>
     debounce(async (value) => {
 
-      if (!value || value.trim().length < RULES.MIN_SEARCH_LENGTH) {
+      if (
+        !value ||
+        value.trim().length < RULES.MIN_SEARCH_LENGTH
+      ) {
         setResults([])
         return
       }
 
       const now = Date.now()
 
-      if (now - lastSearch.current < RULES.SEARCH_COOLDOWN_MS) {
+      if (
+        now - lastSearch.current <
+        RULES.SEARCH_COOLDOWN_MS
+      ) {
         return
       }
 
@@ -207,7 +267,9 @@ function MobilePage() {
 
         setResults(data || [])
 
-      } catch {
+      } catch (error) {
+
+        console.error(error)
 
         setResults([])
 
@@ -220,22 +282,52 @@ function MobilePage() {
   , [])
 
   useEffect(() => {
+
     return () => debouncedSearch.cancel()
+
   }, [debouncedSearch])
 
   const handleSearch = (value) => {
+
     setSearch(value)
+
     debouncedSearch(value)
   }
 
   // =========================
-  // ACTIONS (NO TOCADO)
+  // SONG ACTIONS
   // =========================
   const handleAddSong = async (song) => {
 
     if (isQueueFull(queue)) return
-    if (!canAddSong(queue, deviceId)) return
-    if (isDuplicateSong(queue, song.youtubeId, deviceId)) return
+
+    if (!canAddSong(queue, userId)) {
+
+      return Swal.fire({
+        icon: "warning",
+        title: "Límite alcanzado",
+        text: "Solo puedes tener 1 canción en cola",
+        background: "#000",
+        color: "#06b6d4"
+      })
+    }
+
+    if (
+      isDuplicateSong(
+        queue,
+        song.youtubeId,
+        userId
+      )
+    ) {
+
+      return Swal.fire({
+        icon: "warning",
+        title: "Canción duplicada",
+        text: "Ya agregaste esta canción",
+        background: "#000",
+        color: "#06b6d4"
+      })
+    }
 
     await addSong(song)
 
@@ -247,7 +339,9 @@ function MobilePage() {
 
     if (!editSongData) return
 
-    if (currentSong?.id === editSongData.id) return
+    if (currentSong?.id === editSongData.id) {
+      return
+    }
 
     await editSong(editSongData.id, song)
 
@@ -259,15 +353,15 @@ function MobilePage() {
   }
 
   // =========================
-  // MY SONG STATE (NO TOCADO)
+  // USER SONGS
   // =========================
   const mySongs = useMemo(() =>
     queue.filter(song =>
-      song.ownerId === deviceId &&
+      song.owner_id === userId &&
       song.status !== "done" &&
       song.status !== "cancelled"
     )
-  , [queue, deviceId])
+  , [queue, userId])
 
   const myActiveSong = useMemo(() =>
     mySongs[0] || null
@@ -277,7 +371,7 @@ function MobilePage() {
     currentSong?.id === myActiveSong?.id
 
   // =========================
-  // ALERT SYSTEM (NO TOCADO)
+  // ALERTS
   // =========================
   useEffect(() => {
 
@@ -286,7 +380,9 @@ function MobilePage() {
     const alertKey =
       `${myActiveSong.id}-${currentSong?.id}`
 
-    if (alertOpen.current === alertKey) return
+    if (alertOpen.current === alertKey) {
+      return
+    }
 
     alertOpen.current = alertKey
 
@@ -297,7 +393,8 @@ function MobilePage() {
         html: `<b>${myActiveSong.title}</b>`,
         background: "#000",
         color: "#06b6d4",
-        showConfirmButton: false
+        showConfirmButton: false,
+        timer: 3000
       })
 
       return
@@ -308,7 +405,8 @@ function MobilePage() {
       html: `<b>${myActiveSong.title}</b>`,
       background: "#000",
       color: "#06b6d4",
-      showConfirmButton: false
+      showConfirmButton: false,
+      timer: 3000
     })
 
   }, [
@@ -319,9 +417,13 @@ function MobilePage() {
   ])
 
   // =========================
-  // UI BLOCK
+  // LOADING
   // =========================
-  if (loadingUser || forceRegister || !userReady) {
+  if (
+    loadingUser ||
+    forceRegister ||
+    !userReady
+  ) {
 
     return (
       <div className="min-h-screen bg-black text-white flex items-center justify-center">
@@ -331,20 +433,22 @@ function MobilePage() {
   }
 
   // =========================
-  // UI (NO TOCADO)
+  // UI
   // =========================
   return (
 
     <div className="min-h-screen bg-black text-white relative pb-24 overflow-y-auto">
 
       <div className="text-center pt-4 text-zinc-400 text-sm">
-        Bienvenido, {user?.artistName}
+        Bienvenido, {user?.artist_name}
       </div>
 
       <div className="text-center pt-4">
+
         <h1 className="text-4xl font-black">
           M<span className="text-cyan-400">KARAOKE</span>
         </h1>
+
       </div>
 
       <div className="px-4 mt-5">
@@ -361,7 +465,9 @@ function MobilePage() {
       <div className="px-4 mt-5 space-y-3">
 
         {loading && (
-          <p className="text-zinc-400">Buscando...</p>
+          <p className="text-zinc-400">
+            Buscando...
+          </p>
         )}
 
         {results.map(song => (
@@ -378,8 +484,13 @@ function MobilePage() {
 
             <div className="flex-1">
 
-              <p className="font-bold text-sm">{song.title}</p>
-              <p className="text-xs text-zinc-400">{song.artist}</p>
+              <p className="font-bold text-sm">
+                {song.title}
+              </p>
+
+              <p className="text-xs text-zinc-400">
+                {song.artist}
+              </p>
 
             </div>
 
@@ -396,10 +507,13 @@ function MobilePage() {
 
           </div>
         ))}
+
       </div>
 
       <div className="fixed bottom-0 w-full bg-black/90 text-center py-3 text-zinc-500 border-t border-zinc-800">
+
         Cola global: {queue.length}
+
       </div>
 
     </div>
