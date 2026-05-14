@@ -1,17 +1,29 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional
+
 
 class UserCreate(BaseModel):
     id: str
-    artistName: str
+    artist_name: str = Field(alias="artistName")
+
+    class Config:
+        populate_by_name = True
+
 
 class SongCreate(BaseModel):
-    ownerId: str
+    owner_id: str = Field(alias="ownerId")
     title: str
     artist: str
-    youtubeId: str
+    youtube_id: str = Field(alias="youtubeId")
+
+    class Config:
+        populate_by_name = True
+
 
 class SongUpdate(BaseModel):
     title: Optional[str] = None
     artist: Optional[str] = None
-    youtubeId: Optional[str] = None
+    youtube_id: Optional[str] = Field(default=None, alias="youtubeId")
+
+    class Config:
+        populate_by_name = True
