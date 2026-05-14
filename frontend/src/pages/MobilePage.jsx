@@ -29,7 +29,7 @@ function MobilePage() {
   // =========================
   // USER
   // =========================
-  const userId = session?.user?.id
+  const userId = user?.id
 
   console.log("🧠 SESSION:", session)
   console.log("👤 USER:", user)
