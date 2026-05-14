@@ -45,7 +45,7 @@ app = FastAPI(lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # en prod cambia esto
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -61,7 +61,7 @@ def now_ms():
 
 
 # =====================================================
-# DB HELPERS (más seguros)
+# DB HELPERS
 # =====================================================
 
 def fetch_one(query, params=None):
@@ -132,7 +132,9 @@ def get_user(user_id: str):
 
 @app.post("/user")
 def create_user(user: UserCreate):
-    clean_name = user.artist_name.strip()
+
+    # 🔥 FIX REAL (ANTES FALLABA AQUÍ)
+    clean_name = user.artistName.strip()
 
     if len(clean_name) < 2:
         raise HTTPException(400, "INVALID_ARTIST_NAME")
@@ -157,35 +159,31 @@ def create_user(user: UserCreate):
 
 
 # =====================================================
-# QUEUE HELPERS (OPTIMIZADOS)
+# QUEUE HELPERS
 # =====================================================
 
 def get_queue():
-    rows = fetch_all(
-        """
+    rows = fetch_all("""
         SELECT id, owner_id, title, artist, youtube_id, status, created_at, updated_at
         FROM songs
         WHERE status IN ('queued','playing')
         ORDER BY created_at ASC
-        """
-    )
+    """)
     return [serialize_song(r) for r in rows]
 
 
 def get_current_song():
-    row = fetch_one(
-        """
+    row = fetch_one("""
         SELECT id, owner_id, title, artist, youtube_id, status, created_at, updated_at
         FROM songs
         WHERE status='playing'
         LIMIT 1
-        """
-    )
+    """)
     return serialize_song(row)
 
 
 # =====================================================
-# BROADCAST SAFE (SIN CRASH WS)
+# BROADCAST SAFE
 # =====================================================
 
 async def safe_broadcast(data: dict):
@@ -216,7 +214,7 @@ async def broadcast_player():
 
 
 # =====================================================
-# SEARCH YOUTUBE (ROBUSTO)
+# SEARCH YOUTUBE
 # =====================================================
 
 @app.get("/search")
@@ -254,7 +252,7 @@ async def search(q: str = Query(...)):
 
 
 # =====================================================
-# WEBSOCKET (MEJORADO)
+# WEBSOCKET
 # =====================================================
 
 @app.websocket("/ws")
@@ -275,7 +273,6 @@ async def websocket_endpoint(websocket: WebSocket):
             })
 
         while True:
-            # keep alive (evita disconnect en render/proxies)
             await websocket.receive_text()
 
     except WebSocketDisconnect:
@@ -283,7 +280,7 @@ async def websocket_endpoint(websocket: WebSocket):
 
 
 # =====================================================
-# ADD SONG (CLEAN)
+# ADD SONG
 # =====================================================
 
 @app.post("/queue/add")
@@ -310,10 +307,10 @@ async def add_song(song: SongCreate):
         """,
         {
             "id": song_id,
-            "owner_id": song.owner_id,
+            "owner_id": song.ownerId,
             "title": song.title,
             "artist": song.artist,
-            "youtube_id": song.youtube_id,
+            "youtube_id": song.youtubeId,
             "status": status,
             "created_at": now_ms(),
             "updated_at": now_ms(),
@@ -379,7 +376,7 @@ async def edit_song(song_id: str, data: SongUpdate):
     """, {
         "title": data.title,
         "artist": data.artist,
-        "youtube_id": data.youtube_id,
+        "youtube_id": data.youtubeId,
         "t": now_ms(),
         "id": song_id,
     })
