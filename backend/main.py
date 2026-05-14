@@ -25,7 +25,7 @@ from schemas import (
     SongUpdate,
 )
 
-from connection_manager import manager
+from ws_manager import manager
 
 # =====================================================
 # ENV
