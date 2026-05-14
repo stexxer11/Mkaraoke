@@ -7,7 +7,10 @@ from typing import Optional
 # =====================================================
 
 class UserCreate(BaseModel):
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(
+        populate_by_name=True,
+        extra="ignore"
+    )
 
     id: str
     artist_name: str = Field(alias="artistName")
@@ -18,7 +21,10 @@ class UserCreate(BaseModel):
 # =====================================================
 
 class SongCreate(BaseModel):
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(
+        populate_by_name=True,
+        extra="ignore"
+    )
 
     owner_id: str = Field(alias="ownerId")
     title: str
@@ -31,7 +37,10 @@ class SongCreate(BaseModel):
 # =====================================================
 
 class SongUpdate(BaseModel):
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(
+        populate_by_name=True,
+        extra="ignore"
+    )
 
     title: Optional[str] = None
     artist: Optional[str] = None
