@@ -23,60 +23,55 @@ const KaraokeContext = createContext()
 export function KaraokeProvider({ children }) {
 
   // =========================
-  // APP STATE MACHINE
+  // STATE MACHINE (🔥 CORE)
   // =========================
   const [appState, setAppState] = useState("BOOTING")
 
+  // BOOTING → AUTH → READY
   // =========================
-  // USER
+
   // =========================
+  // SUPABASE USER
+  // =========================
+  const [session, setSession] = useState(null)
   const [user, setUser] = useState(null)
 
   // =========================
-  // DEVICE ID
-  // =========================
-  const [deviceId] = useState(() => {
-    const saved = localStorage.getItem("mk_device_id")
-    if (saved) return saved
-
-    const id = crypto.randomUUID()
-    localStorage.setItem("mk_device_id", id)
-    return id
-  })
-
-  // =========================
-  // QUEUE (RAW)
+  // QUEUE (WS SOURCE OF TRUTH)
   // =========================
   const [queue, setQueue] = useState([])
 
-  // =========================
-  // SAFE QUEUE (🔥 CRASH PROOF)
-  // =========================
-  const safeQueue = useMemo(() => {
-    return Array.isArray(queue) ? queue : []
-  }, [queue])
+  const safeQueue = useMemo(
+    () => Array.isArray(queue) ? queue : [],
+    [queue]
+  )
 
-  // =========================
-  // CURRENT SONG SAFE
-  // =========================
   const currentSong = useMemo(() => {
     return safeQueue.find(s => s?.status === "playing") || null
   }, [safeQueue])
 
   // =========================
-  // LOAD USER (BOOT SAFE)
+  // BOOTSTRAP (SUPABASE SESSION)
   // =========================
   useEffect(() => {
 
-    let mounted = true
-
-    const load = async () => {
+    const init = async () => {
       setAppState("BOOTING")
 
       try {
-        const res = await getUserApi(deviceId)
+        // 🔥 SUPABASE SESSION (IMPORTANTE)
+        const { data: { session } } = await fetch(
+          "/api/session"
+        ).then(r => r.json())
 
-        if (!mounted) return
+        setSession(session || null)
+
+        if (!session?.user) {
+          setAppState("AUTH")
+          return
+        }
+
+        const res = await getUserApi(session.user.id)
 
         if (res?.id && res?.artist_name) {
           setUser(res)
@@ -86,46 +81,44 @@ export function KaraokeProvider({ children }) {
           setAppState("AUTH")
         }
 
-      } catch {
-        setUser(null)
+      } catch (err) {
+        console.error("BOOT ERROR", err)
         setAppState("AUTH")
       }
     }
 
-    if (deviceId) load()
-
-    return () => {
-      mounted = false
-    }
-  }, [deviceId])
+    init()
+  }, [])
 
   // =========================
-  // REGISTER USER
+  // REGISTER USER (SUPABASE ID)
   // =========================
   const registerUser = async (artistName) => {
 
     const clean = artistName?.trim()
-    if (!clean) return null
+    if (!clean || !session?.user?.id) return null
 
     const payload = {
-      id: deviceId,
+      id: session.user.id,
       artistName: clean
     }
 
     await createUserApi(payload)
 
-    setUser(payload)
+    const userRes = await getUserApi(session.user.id)
+
+    setUser(userRes)
     setAppState("READY")
 
-    return payload
+    return userRes
   }
 
   // =========================
-  // ACTIONS SAFE WRAPPERS
+  // QUEUE ACTIONS (SAFE)
   // =========================
   const addSong = async (song) => {
     return addSongApi({
-      ownerId: deviceId,
+      ownerId: session?.user?.id,
       title: song?.title || "",
       artist: song?.artist || "",
       youtubeId: song?.youtubeId || "",
@@ -148,33 +141,34 @@ export function KaraokeProvider({ children }) {
     removeSongApi(id)
 
   // =========================
-  // FLAGS
+  // FLAGS CLEAN
   // =========================
   const isBooting = appState === "BOOTING"
   const isAuth = appState === "AUTH"
   const isReady = appState === "READY"
 
   // =========================
-  // PROVIDER
+  // CONTEXT VALUE
   // =========================
   return (
     <KaraokeContext.Provider value={{
 
+      // STATE MACHINE
       appState,
       isBooting,
       isAuth,
       isReady,
 
+      // AUTH
+      session,
       user,
       registerUser,
 
-      deviceId,
-
-      queue: safeQueue,   // 🔥 IMPORTANT
+      // QUEUE
+      queue: safeQueue,
       currentSong,
 
-      setQueue,
-
+      // ACTIONS
       addSong,
       editSong,
       cancelSong,
