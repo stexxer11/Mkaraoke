@@ -29,7 +29,74 @@ function MobilePage() {
   // =========================
   // USER
   // =========================
-    const userId = user?.id
+  const userId = user?.id
+
+  // =========================
+  // DEBUG USER
+  // =========================
+  useEffect(() => {
+
+    console.log("========== DEBUG USER ==========")
+
+    console.log("loadingUser:", loadingUser)
+
+    console.log("session:", session)
+
+    console.log("session.user:", session?.user)
+
+    console.log("session.user.id:", session?.user?.id)
+
+    console.log("user DB/context:", user)
+
+    console.log("user.id:", user?.id)
+
+    console.log("artist_name:", user?.artist_name)
+
+    console.log("artistName:", user?.artistName)
+
+    console.log(
+      "READY SESSION:",
+      !!session?.user?.id
+    )
+
+    console.log(
+      "READY USER:",
+      !!user
+    )
+
+    console.log(
+      "USER EXISTS IN DB:",
+      !!user?.id
+    )
+
+    console.log(
+      "HAS ARTIST NAME:",
+      !!(user?.artist_name || user?.artistName)
+    )
+
+    console.log("================================")
+
+  }, [session, user, loadingUser])
+
+  // =========================
+  // DEBUG QUEUE
+  // =========================
+  useEffect(() => {
+
+    console.log("========== DEBUG QUEUE ==========")
+
+    console.log("queue:", queue)
+
+    console.log("userId:", userId)
+
+    console.log(
+      "mySongs:",
+      queue.filter(s => s.owner_id === userId)
+    )
+
+    console.log("=================================")
+
+  }, [queue, userId])
 
   // =========================
   // STATE
@@ -56,28 +123,60 @@ function MobilePage() {
   }
 
   // =========================
-  // INIT APP (FIX REAL)
+  // INIT APP
   // =========================
   const isAppReady = useMemo(() => {
-    return (
+
+    const ready =
       !loadingUser &&
       !!session?.user?.id &&
       !!user
-    )
+
+    console.log("APP READY:", ready)
+
+    return ready
+
   }, [loadingUser, session, user])
 
+  // =========================
+  // NEW USER FLOW
+  // =========================
   useEffect(() => {
 
-    if (loadingUser) return
-    if (!session?.user?.id) return
-    if (!user) return
+    console.log("CHECKING NEW USER FLOW")
+
+    if (loadingUser) {
+      console.log("STOP: loadingUser = true")
+      return
+    }
+
+    if (!session?.user?.id) {
+      console.log("STOP: no session user")
+      return
+    }
+
+    if (!user) {
+      console.log("STOP: no user in DB/context")
+      return
+    }
 
     const hasName =
       user.artist_name || user.artistName
 
-    if (hasName) return
+    console.log("hasName:", hasName)
 
-    if (alertShown.current) return
+    if (hasName) {
+      console.log("USER ALREADY HAS NAME")
+      return
+    }
+
+    if (alertShown.current) {
+      console.log("ALERT ALREADY SHOWN")
+      return
+    }
+
+    console.log("SHOWING REGISTER ALERT")
+
     alertShown.current = true
 
     Swal.fire({
@@ -95,7 +194,10 @@ function MobilePage() {
       confirmButtonText: "Crear usuario",
 
       preConfirm: async (value) => {
+
         const artistName = value?.trim()
+
+        console.log("artistName input:", artistName)
 
         if (!artistName) {
           Swal.showValidationMessage("Ingresa un nombre válido")
@@ -103,10 +205,26 @@ function MobilePage() {
         }
 
         try {
-          await registerUser(artistName)
+
+          console.log("REGISTERING USER...")
+
+          const result =
+            await registerUser(artistName)
+
+          console.log(
+            "REGISTER USER SUCCESS:",
+            result
+          )
+
           return true
+
         } catch (error) {
-          console.error(error)
+
+          console.error(
+            "REGISTER USER ERROR:",
+            error
+          )
+
           Swal.showValidationMessage("Error creando usuario")
           return false
         }
@@ -116,9 +234,12 @@ function MobilePage() {
   }, [session, loadingUser, user])
 
   // =========================
-  // LOADING GATE (SOLO ESTO CAMBIA)
+  // LOADING GATE
   // =========================
   if (!isAppReady) {
+
+    console.log("WAITING APP READY...")
+
     return (
       <div className="min-h-screen bg-black text-white flex items-center justify-center">
         Inicializando sistema...
@@ -130,6 +251,7 @@ function MobilePage() {
   // KARAOKE FILTER
   // =========================
   const isKaraokeQuery = (text) => {
+
     const keywords = [
       "karaoke",
       "instrumental",
@@ -155,24 +277,53 @@ function MobilePage() {
   const debouncedSearch = useMemo(() =>
     debounce(async (value) => {
 
+      console.log("SEARCH:", value)
+
       if (!value || value.trim().length < RULES.MIN_SEARCH_LENGTH) {
+
+        console.log("SEARCH TOO SHORT")
+
         setResults([])
         return
       }
 
-      if (Date.now() - lastSearch.current < RULES.SEARCH_COOLDOWN_MS) return
+      if (
+        Date.now() - lastSearch.current <
+        RULES.SEARCH_COOLDOWN_MS
+      ) {
+        console.log("SEARCH COOLDOWN ACTIVE")
+        return
+      }
 
       lastSearch.current = Date.now()
 
       setLoading(true)
 
       try {
-        const data = await searchYouTube(forceKaraokeQuery(value))
+
+        const finalQuery =
+          forceKaraokeQuery(value)
+
+        console.log("FINAL QUERY:", finalQuery)
+
+        const data =
+          await searchYouTube(finalQuery)
+
+        console.log("YOUTUBE RESULTS:", data)
+
         setResults(data || [])
+
       } catch (error) {
-        console.error(error)
+
+        console.error(
+          "YOUTUBE SEARCH ERROR:",
+          error
+        )
+
         setResults([])
+
       } finally {
+
         setLoading(false)
       }
 
@@ -184,6 +335,9 @@ function MobilePage() {
   }, [debouncedSearch])
 
   const handleSearch = (value) => {
+
+    console.log("INPUT SEARCH:", value)
+
     setSearch(value)
     debouncedSearch(value)
   }
@@ -193,7 +347,14 @@ function MobilePage() {
   // =========================
   const handleAddSong = async (song) => {
 
-    if (queue.length >= RULES.MAX_GLOBAL_QUEUE) return
+    console.log("ADDING SONG:", song)
+
+    if (queue.length >= RULES.MAX_GLOBAL_QUEUE) {
+
+      console.log("QUEUE FULL")
+
+      return
+    }
 
     const mySongs = queue.filter(
       s =>
@@ -202,7 +363,12 @@ function MobilePage() {
         s.status !== "cancelled"
     )
 
+    console.log("MY ACTIVE SONGS:", mySongs)
+
     if (mySongs.length >= RULES.MAX_QUEUE_PER_USER) {
+
+      console.log("USER LIMIT REACHED")
+
       return Swal.fire({
         icon: "warning",
         title: "Límite alcanzado",
@@ -218,6 +384,9 @@ function MobilePage() {
       s.status !== "done" &&
       s.status !== "cancelled"
     )) {
+
+      console.log("DUPLICATE SONG")
+
       return Swal.fire({
         icon: "warning",
         title: "Canción duplicada",
@@ -227,24 +396,57 @@ function MobilePage() {
       })
     }
 
-    await addSong(song)
+    try {
 
-    setSearch("")
-    setResults([])
+      await addSong(song)
+
+      console.log("SONG ADDED SUCCESS")
+
+      setSearch("")
+      setResults([])
+
+    } catch (error) {
+
+      console.error(
+        "ADD SONG ERROR:",
+        error
+      )
+    }
   }
 
   const handleReplaceSong = async (song) => {
 
-    if (!editSongData) return
-    if (currentSong?.id === editSongData.id) return
+    console.log("REPLACING SONG:", song)
 
-    await editSong(editSongData.id, song)
+    if (!editSongData) {
+      console.log("NO editSongData")
+      return
+    }
 
-    setEditMode(false)
-    setEditSongData(null)
+    if (currentSong?.id === editSongData.id) {
+      console.log("CANNOT EDIT CURRENT SONG")
+      return
+    }
 
-    setSearch("")
-    setResults([])
+    try {
+
+      await editSong(editSongData.id, song)
+
+      console.log("SONG REPLACED")
+
+      setEditMode(false)
+      setEditSongData(null)
+
+      setSearch("")
+      setResults([])
+
+    } catch (error) {
+
+      console.error(
+        "EDIT SONG ERROR:",
+        error
+      )
+    }
   }
 
   // =========================
@@ -270,14 +472,27 @@ function MobilePage() {
   // =========================
   useEffect(() => {
 
-    if (!myActiveSong) return
+    console.log("ALERT CHECK")
+
+    if (!myActiveSong) {
+      console.log("NO ACTIVE SONG")
+      return
+    }
 
     const alertKey =
       `${myActiveSong.id}-${currentSong?.id}`
 
-    if (alertOpen.current === alertKey) return
+    if (alertOpen.current === alertKey) {
+      console.log("ALERT ALREADY OPEN")
+      return
+    }
 
     alertOpen.current = alertKey
+
+    console.log(
+      "SHOW ALERT FOR:",
+      myActiveSong
+    )
 
     if (isMySongPlaying) {
 
@@ -331,10 +546,17 @@ function MobilePage() {
 
       <div className="px-4 mt-5 space-y-3">
 
-        {loading && <p className="text-zinc-400">Buscando...</p>}
+        {loading && (
+          <p className="text-zinc-400">
+            Buscando...
+          </p>
+        )}
 
         {results.map(song => (
-          <div key={song.youtubeId} className="flex gap-3 p-3 bg-black/60 rounded-xl">
+          <div
+            key={song.youtubeId}
+            className="flex gap-3 p-3 bg-black/60 rounded-xl"
+          >
 
             <img
               src={`https://img.youtube.com/vi/${song.youtubeId}/hqdefault.jpg`}
@@ -342,8 +564,13 @@ function MobilePage() {
             />
 
             <div className="flex-1">
-              <p className="font-bold text-sm">{song.title}</p>
-              <p className="text-xs text-zinc-400">{song.artist}</p>
+              <p className="font-bold text-sm">
+                {song.title}
+              </p>
+
+              <p className="text-xs text-zinc-400">
+                {song.artist}
+              </p>
             </div>
 
             <button
