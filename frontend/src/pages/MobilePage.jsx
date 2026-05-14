@@ -127,105 +127,197 @@ function MobilePage() {
   // =========================
   const isAppReady = useMemo(() => {
 
-  const ready =
-    !loadingUser &&
-    !!user
+    const ready =
+      !loadingUser &&
+      !!session?.user?.id &&
+      !!user
 
-  console.log("APP READY:", ready)
+    console.log("APP READY:", ready)
 
-  return ready
+    return ready
 
-}, [loadingUser, user])
+  }, [loadingUser, session, user])
 
   // =========================
   // NEW USER FLOW
   // =========================
-  useEffect(() => {
+  // =========================
+// NEW USER FLOW
+// =========================
+useEffect(() => {
 
-    console.log("CHECKING NEW USER FLOW")
+  console.log("CHECKING NEW USER FLOW")
 
-   if (loadingUser) {
-  console.log("STOP: loadingUser = true")
-  return
-}
+  // render/supabase todavía cargando
+  if (loadingUser) {
 
-if (!user) {
-  console.log("STOP: no user in DB/context")
-  return
-}
+    console.log(
+      "STOP: loadingUser = true"
+    )
 
-    const hasName =
-      user.artist_name || user.artistName
+    return
+  }
 
-    console.log("hasName:", hasName)
+  // debug session
+  console.log(
+    "SESSION TYPE:",
+    typeof session
+  )
 
-    if (hasName) {
-      console.log("USER ALREADY HAS NAME")
-      return
+  console.log(
+    "SESSION EXISTS:",
+    !!session
+  )
+
+  console.log(
+    "SESSION USER ID:",
+    session?.user?.id
+  )
+
+  // IMPORTANTE:
+  // render free puede tardar en despertar
+  // así que esperamos session real
+  if (!session?.user?.id) {
+
+    console.log(
+      "SESSION NOT READY YET..."
+    )
+
+    // debug extra
+    if (user?.id) {
+
+      console.log(
+        "USER EXISTS IN DB BUT SESSION STILL SLEEPING"
+      )
+
+      console.log(
+        "LIKELY RENDER COLD START"
+      )
     }
 
-    if (alertShown.current) {
-      console.log("ALERT ALREADY SHOWN")
-      return
-    }
+    return
+  }
 
-    console.log("SHOWING REGISTER ALERT")
+  // no hay user todavía
+  if (!user) {
 
-    alertShown.current = true
+    console.log(
+      "STOP: no user in DB/context"
+    )
 
-    Swal.fire({
-      title: "Bienvenido nuevo artista 🎤",
-      text: "Debes crear tu nombre para continuar",
-      input: "text",
-      inputPlaceholder: "Ej: DJ Rolando",
+    return
+  }
 
-      background: "#000",
-      color: "#06b6d4",
+  // detectar nombre artista
+  const hasName =
+    user.artist_name ||
+    user.artistName
 
-      allowOutsideClick: false,
-      allowEscapeKey: false,
+  console.log(
+    "HAS NAME:",
+    hasName
+  )
 
-      confirmButtonText: "Crear usuario",
+  // ya tiene nombre
+  if (hasName) {
 
-      preConfirm: async (value) => {
+    console.log(
+      "USER ALREADY CONFIGURED"
+    )
 
-        const artistName = value?.trim()
+    return
+  }
 
-        console.log("artistName input:", artistName)
+  // evitar doble modal
+  if (alertShown.current) {
 
-        if (!artistName) {
-          Swal.showValidationMessage("Ingresa un nombre válido")
-          return false
-        }
+    console.log(
+      "ALERT ALREADY SHOWN"
+    )
 
-        try {
+    return
+  }
 
-          console.log("REGISTERING USER...")
+  console.log(
+    "SHOWING REGISTER MODAL"
+  )
 
-          const result =
-            await registerUser(artistName)
+  alertShown.current = true
 
-          console.log(
-            "REGISTER USER SUCCESS:",
-            result
-          )
+  Swal.fire({
+    title: "Bienvenido nuevo artista 🎤",
+    text: "Debes crear tu nombre único para continuar",
 
-          return true
+    input: "text",
 
-        } catch (error) {
+    inputPlaceholder: "Ej: DJ Rolando",
 
-          console.error(
-            "REGISTER USER ERROR:",
-            error
-          )
+    background: "#000",
+    color: "#06b6d4",
 
-          Swal.showValidationMessage("Error creando usuario")
-          return false
-        }
+    allowOutsideClick: false,
+    allowEscapeKey: false,
+
+    confirmButtonText: "Crear usuario",
+
+    preConfirm: async (value) => {
+
+      const artistName =
+        value?.trim()
+
+      console.log(
+        "ARTIST INPUT:",
+        artistName
+      )
+
+      if (!artistName) {
+
+        Swal.showValidationMessage(
+          "Ingresa un nombre válido"
+        )
+
+        return false
       }
-    })
 
-  }, [session, loadingUser, user])
+      try {
+
+        console.log(
+          "REGISTERING USER..."
+        )
+
+        const result =
+          await registerUser(artistName)
+
+        console.log(
+          "REGISTER SUCCESS:",
+          result
+        )
+
+        return true
+
+      } catch (error) {
+
+        console.error(
+          "REGISTER ERROR:",
+          error
+        )
+
+        Swal.showValidationMessage(
+          error?.message ||
+          "Error creando usuario"
+        )
+
+        return false
+      }
+    }
+  })
+
+}, [
+  session,
+  loadingUser,
+  user,
+  registerUser
+])
 
   // =========================
   // LOADING GATE
