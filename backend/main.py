@@ -134,7 +134,7 @@ def get_user(user_id: str):
 def create_user(user: UserCreate):
 
     # 🔥 FIX REAL (ANTES FALLABA AQUÍ)
-    clean_name = user.artistName.strip()
+    clean_name = user.artist_name.strip()
 
     if len(clean_name) < 2:
         raise HTTPException(400, "INVALID_ARTIST_NAME")
