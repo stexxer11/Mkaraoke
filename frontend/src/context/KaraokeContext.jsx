@@ -23,9 +23,9 @@ const KaraokeContext = createContext()
 export function KaraokeProvider({ children }) {
 
   // =========================
-  // APP STATE MACHINE
+  // STATE MACHINE
   // =========================
-  const [appState, setAppState] = useState("BOOTING") 
+  const [appState, setAppState] = useState("BOOTING")
   // BOOTING → AUTH → READY
 
   // =========================
@@ -51,12 +51,20 @@ export function KaraokeProvider({ children }) {
   const [queue, setQueue] = useState([])
 
   // =========================
+  // CURRENT SONG
+  // =========================
+  const currentSong = useMemo(
+    () => queue.find(s => s.status === "playing") || null,
+    [queue]
+  )
+
+  // =========================
   // WS
   // =========================
   const socketRef = useRef(null)
 
   // =========================
-  // LOAD USER (BOOT STEP 1)
+  // LOAD USER (BOOT FLOW)
   // =========================
   useEffect(() => {
 
@@ -113,18 +121,6 @@ export function KaraokeProvider({ children }) {
   }
 
   // =========================
-  // DERIVED STATE
-  // =========================
-  const currentSong = useMemo(
-    () => queue.find(s => s.status === "playing") || null,
-    [queue]
-  )
-
-  const isBooting = appState === "BOOTING"
-  const isAuth = appState === "AUTH"
-  const isReady = appState === "READY"
-
-  // =========================
   // ACTIONS
   // =========================
   const addSong = async (song) => {
@@ -138,6 +134,25 @@ export function KaraokeProvider({ children }) {
 
   const editSong = async (id, data) =>
     editSongApi(id, data)
+
+  const cancelSong = async (id) =>
+    cancelSongApi(id)
+
+  const playNextSong = async () =>
+    nextSongApi()
+
+  const playNow = async (id) =>
+    playNowApi(id)
+
+  const removeSongById = async (id) =>
+    removeSongApi(id)
+
+  // =========================
+  // DERIVED FLAGS
+  // =========================
+  const isBooting = appState === "BOOTING"
+  const isAuth = appState === "AUTH"
+  const isReady = appState === "READY"
 
   // =========================
   // PROVIDER
@@ -161,12 +176,15 @@ export function KaraokeProvider({ children }) {
       // QUEUE
       queue,
       setQueue,
-
       currentSong,
 
       // ACTIONS
       addSong,
       editSong,
+      cancelSong,
+      playNextSong,
+      playNow,
+      removeSongById,
     }}>
       {children}
     </KaraokeContext.Provider>

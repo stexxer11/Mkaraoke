@@ -27,6 +27,9 @@ function MobilePage() {
     addSong,
   } = useKaraoke()
 
+  // =========================
+  // LOCAL STATE
+  // =========================
   const [search, setSearch] = useState("")
   const [results, setResults] = useState([])
   const [loading, setLoading] = useState(false)
@@ -34,7 +37,7 @@ function MobilePage() {
   const authModalShown = useRef(false)
 
   // =========================
-  // AUTH MODAL SAFE (ONLY ON STATE CHANGE)
+  // AUTH MODAL (ONLY ON STATE CHANGE)
   // =========================
   useEffect(() => {
 
@@ -54,6 +57,7 @@ function MobilePage() {
       preConfirm: async (value) => {
 
         const name = value?.trim()
+
         if (!name) {
           Swal.showValidationMessage("Nombre inválido")
           return false
@@ -94,7 +98,7 @@ function MobilePage() {
   }
 
   // =========================
-  // SEARCH (SAFE)
+  // SEARCH (STABLE)
   // =========================
   const debouncedSearch = useMemo(() =>
     debounce(async (value) => {
@@ -109,6 +113,8 @@ function MobilePage() {
       try {
         const res = await searchYouTube(value)
         setResults(res || [])
+      } catch {
+        setResults([])
       } finally {
         setLoading(false)
       }
@@ -148,14 +154,14 @@ function MobilePage() {
         <input
           value={search}
           onChange={(e) => handleSearch(e.target.value)}
-          className="w-full p-4 bg-black border border-cyan-500 rounded-xl"
           placeholder="Buscar canción..."
+          className="w-full p-4 bg-black border border-cyan-500 rounded-xl"
         />
       </div>
 
       <div className="px-4 mt-4 space-y-3">
 
-        {loading && <p>Buscando...</p>}
+        {loading && <p className="text-zinc-400">Buscando...</p>}
 
         {results.map(song => (
           <div key={song.youtubeId} className="flex gap-3 p-3 bg-black/60 rounded-xl">
