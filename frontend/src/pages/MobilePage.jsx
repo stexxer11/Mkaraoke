@@ -2,10 +2,11 @@ import {
   useState,
   useEffect,
   useRef,
+  useMemo,
 } from "react"
 
-import debounce from "lodash.debounce"
 import Swal from "sweetalert2"
+import debounce from "lodash.debounce"
 
 import { useKaraoke } from "../context/KaraokeContext"
 import { searchYouTube } from "../services/youtubeApi"
@@ -13,24 +14,22 @@ import { searchYouTube } from "../services/youtubeApi"
 function MobilePage() {
 
   const {
-    appState,
-    isBooting,
-    isAuth,
-    isReady,
-
+    session,
     user,
-    queue,
+    loadingUser,
+
+    queue = [],
     currentSong,
 
     registerUser,
+    loadUserFromSession,
     addSong,
   } = useKaraoke()
 
   // =========================
-  // SAFE GUARDS (🔥 CRASH PROOF)
+  // SAFE STATE
   // =========================
   const safeQueue = Array.isArray(queue) ? queue : []
-  const safeUser = user && typeof user === "object" ? user : null
 
   // =========================
   // LOCAL STATE
@@ -39,43 +38,57 @@ function MobilePage() {
   const [results, setResults] = useState([])
   const [loading, setLoading] = useState(false)
 
-  const authShown = useRef(false)
+  const authModalShown = useRef(false)
 
   // =========================
-  // AUTH MODAL (SAFE SIDE EFFECT)
+  // BOOT FLOW (SUPABASE AUTH)
   // =========================
   useEffect(() => {
 
-    if (appState !== "AUTH") return
-    if (authShown.current) return
+    if (loadingUser) return
+    if (!session?.user) return
 
-    authShown.current = true
+    const run = async () => {
 
-    Swal.fire({
-      title: "Bienvenido 🎤",
-      text: "Crea tu nombre artístico",
-      input: "text",
-      background: "#000",
-      color: "#06b6d4",
-      allowOutsideClick: false,
-      confirmButtonText: "Crear",
-      preConfirm: async (value) => {
+      const profile = await loadUserFromSession(session.user.id)
 
-        const name = value?.trim()
-        if (!name) {
-          Swal.showValidationMessage("Nombre inválido")
-          return false
-        }
+      // 👇 NO EXISTE PERFIL → pedir nombre
+      if (!profile) {
 
-        await registerUser(name)
-        return true
+        if (authModalShown.current) return
+        authModalShown.current = true
+
+        Swal.fire({
+          title: "Bienvenido 🎤",
+          text: "Crea tu nombre artístico",
+          input: "text",
+          background: "#000",
+          color: "#06b6d4",
+          allowOutsideClick: false,
+          confirmButtonText: "Crear",
+
+          preConfirm: async (value) => {
+            const name = value?.trim()
+
+            if (!name) {
+              Swal.showValidationMessage("Nombre inválido")
+              return false
+            }
+
+            await registerUser(name)
+          }
+        })
+
+        return
       }
-    })
+    }
 
-  }, [appState, registerUser])
+    run()
+
+  }, [session, loadingUser])
 
   // =========================
-  // DEBOUNCE SAFE (NO useMemo → NO #310 CRASH)
+  // DEBOUNCE SEARCH SAFE
   // =========================
   const debounceRef = useRef(null)
 
@@ -92,8 +105,6 @@ function MobilePage() {
       try {
         const res = await searchYouTube(value)
         setResults(res || [])
-      } catch {
-        setResults([])
       } finally {
         setLoading(false)
       }
@@ -107,39 +118,39 @@ function MobilePage() {
   }
 
   // =========================
-  // BOOT STATES
-  // =========================
-  if (isBooting) {
-    return (
-      <div className="min-h-screen bg-black text-white flex items-center justify-center">
-        Inicializando sistema...
-      </div>
-    )
-  }
-
-  if (isAuth) {
-    return (
-      <div className="min-h-screen bg-black text-white flex items-center justify-center">
-        Creando usuario...
-      </div>
-    )
-  }
-
-  if (!isReady) {
-    return (
-      <div className="min-h-screen bg-black text-white flex items-center justify-center">
-        Preparando app...
-      </div>
-    )
-  }
-
-  // =========================
-  // ADD SONG SAFE
+  // ADD SONG
   // =========================
   const handleAddSong = async (song) => {
     await addSong(song)
     setSearch("")
     setResults([])
+  }
+
+  // =========================
+  // BOOT STATES (IMPORTANT)
+  // =========================
+  if (loadingUser) {
+    return (
+      <div className="min-h-screen bg-black text-white flex items-center justify-center">
+        Cargando usuario...
+      </div>
+    )
+  }
+
+  if (!session?.user) {
+    return (
+      <div className="min-h-screen bg-black text-white flex items-center justify-center">
+        Iniciando sesión...
+      </div>
+    )
+  }
+
+  if (!user) {
+    return (
+      <div className="min-h-screen bg-black text-white flex items-center justify-center">
+        Preparando perfil...
+      </div>
+    )
   }
 
   // =========================
@@ -149,7 +160,7 @@ function MobilePage() {
     <div className="min-h-screen bg-black text-white pb-24">
 
       <div className="text-center pt-4 text-sm text-zinc-400">
-        Bienvenido, {safeUser?.artist_name || "Artista"}
+        Bienvenido, {user.artist_name}
       </div>
 
       <h1 className="text-center text-4xl font-black mt-3">
