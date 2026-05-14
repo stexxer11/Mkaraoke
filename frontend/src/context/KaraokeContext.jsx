@@ -17,7 +17,7 @@ import {
   createUserApi,
 } from "../services/karaokeApi"
 
-import { supabase } from "../services/supabaseClient"
+import { supabase } from "../services/supabase"
 
 const KaraokeContext = createContext()
 
