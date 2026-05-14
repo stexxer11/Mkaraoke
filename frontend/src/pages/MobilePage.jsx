@@ -127,16 +127,15 @@ function MobilePage() {
   // =========================
   const isAppReady = useMemo(() => {
 
-    const ready =
-      !loadingUser &&
-      !!session?.user?.id &&
-      !!user
+  const ready =
+    !loadingUser &&
+    !!user
 
-    console.log("APP READY:", ready)
+  console.log("APP READY:", ready)
 
-    return ready
+  return ready
 
-  }, [loadingUser, session, user])
+}, [loadingUser, user])
 
   // =========================
   // NEW USER FLOW
@@ -145,20 +144,15 @@ function MobilePage() {
 
     console.log("CHECKING NEW USER FLOW")
 
-    if (loadingUser) {
-      console.log("STOP: loadingUser = true")
-      return
-    }
+   if (loadingUser) {
+  console.log("STOP: loadingUser = true")
+  return
+}
 
-    if (!session?.user?.id) {
-      console.log("STOP: no session user")
-      return
-    }
-
-    if (!user) {
-      console.log("STOP: no user in DB/context")
-      return
-    }
+if (!user) {
+  console.log("STOP: no user in DB/context")
+  return
+}
 
     const hasName =
       user.artist_name || user.artistName
