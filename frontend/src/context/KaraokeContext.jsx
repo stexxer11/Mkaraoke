@@ -22,21 +22,20 @@ const KaraokeContext = createContext()
 
 export function KaraokeProvider({ children }) {
 
-  // =====================================================
-  // BOOTSTRAP STATE
-  // =====================================================
-  const [appState, setAppState] = useState("booting")
-  // booting | auth | ready | error
+  // =========================
+  // APP STATE MACHINE
+  // =========================
+  const [appState, setAppState] = useState("BOOTING") 
+  // BOOTING → AUTH → READY
 
+  // =========================
+  // USER
+  // =========================
   const [user, setUser] = useState(null)
-  const [queue, setQueue] = useState([])
-  const [playerVersion, setPlayerVersion] = useState(0)
 
-  const socketRef = useRef(null)
-
-  // =====================================================
+  // =========================
   // DEVICE ID
-  // =====================================================
+  // =========================
   const [deviceId] = useState(() => {
     const saved = localStorage.getItem("mk_device_id")
     if (saved) return saved
@@ -46,189 +45,128 @@ export function KaraokeProvider({ children }) {
     return id
   })
 
-  // =====================================================
-  // LOAD USER (BOOTSTRAP STEP 1)
-  // =====================================================
+  // =========================
+  // QUEUE
+  // =========================
+  const [queue, setQueue] = useState([])
+
+  // =========================
+  // WS
+  // =========================
+  const socketRef = useRef(null)
+
+  // =========================
+  // LOAD USER (BOOT STEP 1)
+  // =========================
   useEffect(() => {
 
-    const loadUser = async () => {
-      try {
-        setAppState("booting")
+    let mounted = true
 
+    const load = async () => {
+      setAppState("BOOTING")
+
+      try {
         const res = await getUserApi(deviceId)
+
+        if (!mounted) return
 
         if (res?.id && res?.artist_name) {
           setUser(res)
-          setAppState("ready")
+          setAppState("READY")
         } else {
-          setUser(res?.id ? res : null)
-          setAppState("auth")
+          setUser(null)
+          setAppState("AUTH")
         }
 
-      } catch (err) {
-        console.log(err)
-        setAppState("error")
+      } catch (e) {
+        setUser(null)
+        setAppState("AUTH")
       }
     }
 
-    if (deviceId) loadUser()
+    if (deviceId) load()
 
+    return () => {
+      mounted = false
+    }
   }, [deviceId])
 
-  // =====================================================
+  // =========================
   // REGISTER USER
-  // =====================================================
+  // =========================
   const registerUser = async (artistName) => {
 
     const clean = artistName?.trim()
     if (!clean) return null
 
-    try {
-
-      const payload = {
-        id: deviceId,
-        artistName: clean
-      }
-
-      await createUserApi(payload)
-
-      setUser(payload)
-      setAppState("ready")
-
-      return payload
-
-    } catch (err) {
-      console.log("CREATE USER ERROR:", err)
-      return null
+    const payload = {
+      id: deviceId,
+      artistName: clean
     }
+
+    await createUserApi(payload)
+
+    setUser(payload)
+    setAppState("READY")
+
+    return payload
   }
 
-  // =====================================================
+  // =========================
   // DERIVED STATE
-  // =====================================================
+  // =========================
   const currentSong = useMemo(
-    () => queue?.find(s => s.status === "playing") || null,
+    () => queue.find(s => s.status === "playing") || null,
     [queue]
   )
 
-  const activeQueue = useMemo(
-    () => (queue || []).filter(
-      s => s.status === "queued" || s.status === "playing"
-    ),
-    [queue]
-  )
+  const isBooting = appState === "BOOTING"
+  const isAuth = appState === "AUTH"
+  const isReady = appState === "READY"
 
-  const mySongs = useMemo(() => {
-    if (!Array.isArray(queue)) return []
-    if (!user?.id) return []
-
-    return activeQueue.filter(
-      s => String(s.owner_id) === String(user.id)
-    )
-  }, [activeQueue, user, queue])
-
-  // =====================================================
-  // WEBSOCKET (solo ready)
-  // =====================================================
-  useEffect(() => {
-
-    if (appState !== "ready") return
-
-    const ws = new WebSocket(
-      import.meta.env.VITE_WS_URL?.replace("https", "wss") + "/ws"
-    )
-
-    socketRef.current = ws
-
-    ws.onopen = () => {
-      console.log("WS connected")
-    }
-
-    ws.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data)
-
-        if (data.type === "queue_update") {
-          setQueue(data.queue || [])
-        }
-
-        if (data.type === "LOAD_VIDEO" || data.type === "STOP_VIDEO") {
-          setPlayerVersion(v => v + 1)
-        }
-
-      } catch (e) {
-        console.log("WS parse error", e)
-      }
-    }
-
-    ws.onerror = () => console.log("WS error")
-
-    ws.onclose = () => console.log("WS closed")
-
-    return () => ws.close()
-
-  }, [appState])
-
-  // =====================================================
+  // =========================
   // ACTIONS
-  // =====================================================
-  const addSong = async (songData) => {
+  // =========================
+  const addSong = async (song) => {
     return addSongApi({
       ownerId: deviceId,
-      title: songData.title,
-      artist: songData.artist,
-      youtubeId: songData.youtubeId,
+      title: song.title,
+      artist: song.artist,
+      youtubeId: song.youtubeId,
     })
   }
 
   const editSong = async (id, data) =>
-    editSongApi(id, data).catch(() => ({ ok: false }))
+    editSongApi(id, data)
 
-  const cancelSong = async (id) =>
-    cancelSongApi(id).catch(() => ({ ok: false }))
-
-  const playNextSong = async () =>
-    nextSongApi().catch(console.log)
-
-  const playNow = async (id) =>
-    playNowApi(id).catch(() => ({ ok: false }))
-
-  const removeSongById = async (id) =>
-    removeSongApi(id).catch(console.log)
-
-  // =====================================================
+  // =========================
   // PROVIDER
-  // =====================================================
+  // =========================
   return (
     <KaraokeContext.Provider value={{
 
-      // STATE
+      // STATE MACHINE
       appState,
-      isBooting: appState === "booting",
-      isAuth: appState === "auth",
-      isReady: appState === "ready",
-      isError: appState === "error",
+      isBooting,
+      isAuth,
+      isReady,
 
-      // DATA
+      // USER
       user,
-      queue,
-      currentSong,
-      mySongs,
-
-      // WS VERSION
-      playerVersion,
-
-      // ACTIONS
       registerUser,
-      addSong,
-      editSong,
-      cancelSong,
-      playNextSong,
-      playNow,
-      removeSongById,
 
+      // DEVICE
       deviceId,
 
+      // QUEUE
+      queue,
+      setQueue,
+
+      currentSong,
+
+      // ACTIONS
+      addSong,
+      editSong,
     }}>
       {children}
     </KaraokeContext.Provider>

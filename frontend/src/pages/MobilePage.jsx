@@ -1,8 +1,8 @@
 import {
   useState,
   useEffect,
-  useRef,
   useMemo,
+  useRef,
 } from "react"
 
 import debounce from "lodash.debounce"
@@ -21,24 +21,53 @@ function MobilePage() {
 
     user,
     queue = [],
+    currentSong,
 
     registerUser,
     addSong,
   } = useKaraoke()
 
-  const userId = user?.id
-
-  // =========================
-  // LOCAL STATE
-  // =========================
   const [search, setSearch] = useState("")
   const [results, setResults] = useState([])
   const [loading, setLoading] = useState(false)
 
-  const alertShown = useRef(false)
+  const authModalShown = useRef(false)
 
   // =========================
-  // BOOTSTRAP GUARDS
+  // AUTH MODAL SAFE (ONLY ON STATE CHANGE)
+  // =========================
+  useEffect(() => {
+
+    if (appState !== "AUTH") return
+    if (authModalShown.current) return
+
+    authModalShown.current = true
+
+    Swal.fire({
+      title: "Bienvenido 🎤",
+      text: "Crea tu nombre artístico",
+      input: "text",
+      background: "#000",
+      color: "#06b6d4",
+      allowOutsideClick: false,
+      confirmButtonText: "Crear",
+      preConfirm: async (value) => {
+
+        const name = value?.trim()
+        if (!name) {
+          Swal.showValidationMessage("Nombre inválido")
+          return false
+        }
+
+        await registerUser(name)
+        return true
+      }
+    })
+
+  }, [appState, registerUser])
+
+  // =========================
+  // BOOT STATES
   // =========================
   if (isBooting) {
     return (
@@ -48,38 +77,7 @@ function MobilePage() {
     )
   }
 
-  // =========================
-  // AUTH FLOW (SAFE ONCE)
-  // =========================
   if (isAuth) {
-
-    if (!alertShown.current) {
-      alertShown.current = true
-
-      setTimeout(() => {
-        Swal.fire({
-          title: "Bienvenido 🎤",
-          text: "Debes crear tu nombre artístico",
-          input: "text",
-          background: "#000",
-          color: "#06b6d4",
-          allowOutsideClick: false,
-          allowEscapeKey: false,
-          confirmButtonText: "Crear",
-          preConfirm: async (value) => {
-            const name = value?.trim()
-
-            if (!name) {
-              Swal.showValidationMessage("Nombre inválido")
-              return false
-            }
-
-            await registerUser(name)
-          }
-        })
-      }, 50)
-    }
-
     return (
       <div className="min-h-screen bg-black text-white flex items-center justify-center">
         Creando usuario...
@@ -96,12 +94,12 @@ function MobilePage() {
   }
 
   // =========================
-  // SEARCH (SAFE + CLEANUP)
+  // SEARCH (SAFE)
   // =========================
   const debouncedSearch = useMemo(() =>
     debounce(async (value) => {
 
-      if (!value || value.trim().length < 3) {
+      if (!value || value.length < 3) {
         setResults([])
         return
       }
@@ -111,9 +109,6 @@ function MobilePage() {
       try {
         const res = await searchYouTube(value)
         setResults(res || [])
-      } catch (err) {
-        console.log(err)
-        setResults([])
       } finally {
         setLoading(false)
       }
@@ -121,51 +116,18 @@ function MobilePage() {
     }, 500)
   , [])
 
-  useEffect(() => {
-    return () => {
-      debouncedSearch.cancel()
-    }
-  }, [debouncedSearch])
-
   const handleSearch = (value) => {
     setSearch(value)
     debouncedSearch(value)
   }
 
   // =========================
-  // ADD SONG (SAFE)
+  // ADD SONG
   // =========================
   const handleAddSong = async (song) => {
-
-    if (!song?.youtubeId) return
-
-    try {
-      await addSong(song)
-
-      setSearch("")
-      setResults([])
-
-      Swal.fire({
-        icon: "success",
-        title: "Agregado 🎤",
-        timer: 1200,
-        showConfirmButton: false,
-        background: "#000",
-        color: "#06b6d4"
-      })
-
-    } catch (err) {
-      console.log(err)
-
-      Swal.fire({
-        icon: "error",
-        title: "Error al agregar",
-        timer: 1200,
-        showConfirmButton: false,
-        background: "#000",
-        color: "#ef4444"
-      })
-    }
+    await addSong(song)
+    setSearch("")
+    setResults([])
   }
 
   // =========================
@@ -174,55 +136,43 @@ function MobilePage() {
   return (
     <div className="min-h-screen bg-black text-white pb-24">
 
-      {/* HEADER */}
       <div className="text-center pt-4 text-sm text-zinc-400">
-        Bienvenido, {user?.artist_name || "Artista"}
+        Bienvenido, {user?.artist_name}
       </div>
 
       <h1 className="text-center text-4xl font-black mt-3">
         M<span className="text-cyan-400">KARAOKE</span>
       </h1>
 
-      {/* SEARCH */}
       <div className="px-4 mt-6">
         <input
           value={search}
           onChange={(e) => handleSearch(e.target.value)}
+          className="w-full p-4 bg-black border border-cyan-500 rounded-xl"
           placeholder="Buscar canción..."
-          className="w-full p-4 bg-black border border-cyan-500 rounded-xl outline-none"
         />
       </div>
 
-      {/* RESULTS */}
       <div className="px-4 mt-4 space-y-3">
 
-        {loading && (
-          <p className="text-zinc-400">Buscando...</p>
-        )}
+        {loading && <p>Buscando...</p>}
 
         {results.map(song => (
-          <div
-            key={song.youtubeId}
-            className="flex gap-3 p-3 bg-black/60 rounded-xl border border-zinc-800"
-          >
+          <div key={song.youtubeId} className="flex gap-3 p-3 bg-black/60 rounded-xl">
 
             <img
               src={`https://img.youtube.com/vi/${song.youtubeId}/hqdefault.jpg`}
-              className="w-14 h-14 rounded-lg object-cover"
+              className="w-14 h-14 rounded-lg"
             />
 
             <div className="flex-1">
-              <p className="font-bold text-sm">
-                {song.title}
-              </p>
-              <p className="text-xs text-zinc-400">
-                {song.artist}
-              </p>
+              <p className="font-bold text-sm">{song.title}</p>
+              <p className="text-xs text-zinc-400">{song.artist}</p>
             </div>
 
             <button
               onClick={() => handleAddSong(song)}
-              className="px-4 py-2 bg-cyan-500 text-black rounded-lg font-bold"
+              className="px-4 py-2 bg-cyan-500 text-black rounded-lg"
             >
               +
             </button>
@@ -232,8 +182,7 @@ function MobilePage() {
 
       </div>
 
-      {/* FOOTER */}
-      <div className="fixed bottom-0 w-full bg-black text-center py-3 border-t border-zinc-800 text-zinc-400">
+      <div className="fixed bottom-0 w-full bg-black text-center py-3 border-t border-zinc-800">
         Cola: {queue.length}
       </div>
 
