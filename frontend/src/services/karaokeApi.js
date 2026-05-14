@@ -14,15 +14,11 @@ const safeRequest = async (request, name) => {
     return response.data
 
   } catch (error) {
-    const status =
-      error?.response?.status
-
-    const serverMessage =
-      error?.response?.data?.detail ||
-      error?.response?.data?.message
+    const status = error?.response?.status
 
     const message =
-      serverMessage ||
+      error?.response?.data?.detail ||
+      error?.response?.data?.message ||
       error?.message ||
       "UNKNOWN_ERROR"
 
@@ -64,12 +60,36 @@ export const removeSongApi = (id) =>
   safeRequest(api.delete(`/queue/hard/${id}`), "REMOVE_SONG")
 
 // =========================
-// USERS (FIXED)
+// USERS (FIX IMPORTANTE)
 // =========================
 
-// ❌ NO /user/me
-export const getUserApi = (userId) =>
-  safeRequest(api.get(`/user/${userId}`), "GET_USER")
+// ✔ siempre devuelve usuario normalizado
+export const getUserApi = async (userId) => {
+  const data = await safeRequest(
+    api.get(`/user/${userId}`),
+    "GET_USER"
+  )
 
-export const createUserApi = (data) =>
-  safeRequest(api.post("/user", data), "CREATE_USER")
+  return normalizeUser(data)
+}
+
+export const createUserApi = async (data) => {
+  const res = await safeRequest(
+    api.post("/user", data),
+    "CREATE_USER"
+  )
+
+  return normalizeUser(res)
+}
+
+// =========================
+// NORMALIZER (🔥 CLAVE)
+// =========================
+const normalizeUser = (user) => {
+  if (!user) return null
+
+  return {
+    id: user.id,
+    artist_name: user.artist_name || user.artistName || null,
+  }
+}
