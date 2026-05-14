@@ -24,13 +24,9 @@ const KaraokeContext = createContext()
 export function KaraokeProvider({ children }) {
 
   // =========================
-  // STATE MACHINE
+  // STATE MACHINE CLARA
   // =========================
   const [appState, setAppState] = useState("BOOTING")
-
-  // =========================
-  // SUPABASE SESSION
-  // =========================
   const [session, setSession] = useState(null)
   const [user, setUser] = useState(null)
 
@@ -49,7 +45,7 @@ export function KaraokeProvider({ children }) {
   }, [safeQueue])
 
   // =========================
-  // BOOT SUPABASE SESSION (FIX REAL)
+  // INIT SUPABASE SESSION
   // =========================
   useEffect(() => {
 
@@ -63,19 +59,21 @@ export function KaraokeProvider({ children }) {
 
         setSession(session || null)
 
+        setAppState("CHECK_SESSION")
+
         if (!session?.user) {
           setAppState("AUTH")
           return
         }
 
-        const res = await getUserApi(session.user.id)
+        const profile = await getUserApi(session.user.id)
 
-        if (res?.id && res?.artist_name) {
-          setUser(res)
+        if (profile?.id && profile?.artist_name) {
+          setUser(profile)
           setAppState("READY")
         } else {
           setUser(null)
-          setAppState("AUTH")
+          setAppState("PROFILE") // 👈 CLAVE
         }
 
       } catch (err) {
@@ -86,9 +84,9 @@ export function KaraokeProvider({ children }) {
 
     init()
 
-    // 🔥 live auth listener
     const { data: listener } = supabase.auth.onAuthStateChange(
       async (_event, session) => {
+
         setSession(session)
 
         if (!session?.user) {
@@ -97,14 +95,14 @@ export function KaraokeProvider({ children }) {
           return
         }
 
-        const res = await getUserApi(session.user.id)
+        const profile = await getUserApi(session.user.id)
 
-        if (res?.id && res?.artist_name) {
-          setUser(res)
+        if (profile?.id && profile?.artist_name) {
+          setUser(profile)
           setAppState("READY")
         } else {
           setUser(null)
-          setAppState("AUTH")
+          setAppState("PROFILE")
         }
       }
     )
@@ -121,19 +119,17 @@ export function KaraokeProvider({ children }) {
     const clean = artistName?.trim()
     if (!clean || !session?.user?.id) return null
 
-    const payload = {
+    await createUserApi({
       id: session.user.id,
       artistName: clean
-    }
+    })
 
-    await createUserApi(payload)
+    const profile = await getUserApi(session.user.id)
 
-    const userRes = await getUserApi(session.user.id)
-
-    setUser(userRes)
+    setUser(profile)
     setAppState("READY")
 
-    return userRes
+    return profile
   }
 
   // =========================
@@ -155,21 +151,22 @@ export function KaraokeProvider({ children }) {
   const removeSongById = async (id) => removeSongApi(id)
 
   // =========================
-  // FLAGS
+  // FLAGS LIMPIOS
   // =========================
   const isBooting = appState === "BOOTING"
+  const isChecking = appState === "CHECK_SESSION"
   const isAuth = appState === "AUTH"
+  const isProfile = appState === "PROFILE"
   const isReady = appState === "READY"
 
-  // =========================
-  // PROVIDER
-  // =========================
   return (
     <KaraokeContext.Provider value={{
 
       appState,
       isBooting,
+      isChecking,
       isAuth,
+      isProfile,
       isReady,
 
       session,
@@ -178,6 +175,8 @@ export function KaraokeProvider({ children }) {
 
       queue: safeQueue,
       currentSong,
+
+      setQueue,
 
       addSong,
       editSong,
