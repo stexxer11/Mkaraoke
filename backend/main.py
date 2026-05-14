@@ -1,39 +1,31 @@
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy import text
-from sqlalchemy.exc import IntegrityError
-from contextlib import asynccontextmanager
 
-import httpx
 import os
 import time
 from uuid import uuid4
+from supabase import create_client, Client
 
-from database import engine
-from schemas import UserCreate, SongCreate, SongUpdate
+from schemas import SongCreate, SongUpdate
 
 # =====================================================
 # ENV
 # =====================================================
 
-API_KEY = os.getenv("YOUTUBE_API_KEY")
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+YOUTUBE_API_KEY = os.getenv("YOUTUBE_API_KEY")
 
-http_client: httpx.AsyncClient | None = None
+if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+    raise ValueError("Faltan credenciales de Supabase")
 
+supabase: Client = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
 
 # =====================================================
-# LIFECYCLE
+# APP
 # =====================================================
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    global http_client
-    http_client = httpx.AsyncClient(timeout=15)
-    yield
-    await http_client.aclose()
-
-
-app = FastAPI(lifespan=lifespan)
+app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
@@ -43,52 +35,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-
 # =====================================================
-# TIME
+# UTIL
 # =====================================================
 
 def now_ms():
     return int(time.time() * 1000)
-
-
-# =====================================================
-# DB HELPERS
-# =====================================================
-
-def fetch_one(query, params=None):
-    with engine.connect() as conn:
-        return conn.execute(text(query), params or {}).fetchone()
-
-
-def fetch_all(query, params=None):
-    with engine.connect() as conn:
-        return conn.execute(text(query), params or {}).fetchall()
-
-
-def execute(query, params=None):
-    with engine.begin() as conn:
-        conn.execute(text(query), params or {})
-
-
-# =====================================================
-# SERIALIZER
-# =====================================================
-
-def serialize_song(row):
-    if not row:
-        return None
-    return {
-        "id": row[0],
-        "owner_id": row[1],
-        "title": row[2],
-        "artist": row[3],
-        "youtubeId": row[4],
-        "status": row[5],
-        "created_at": row[6],
-        "updated_at": row[7],
-    }
-
 
 # =====================================================
 # SEARCH YOUTUBE
@@ -97,86 +49,74 @@ def serialize_song(row):
 @app.get("/search")
 async def search(q: str = Query(...)):
 
-    if not API_KEY or len(q.strip()) < 3:
+    if not YOUTUBE_API_KEY or len(q.strip()) < 3:
         return []
 
-    if http_client is None:
-        raise HTTPException(500, "HTTP_CLIENT_NOT_READY")
+    import httpx
 
-    try:
-        res = await http_client.get(
+    async with httpx.AsyncClient(timeout=15) as client:
+        res = await client.get(
             "https://www.googleapis.com/youtube/v3/search",
             params={
                 "part": "snippet",
                 "type": "video",
                 "maxResults": 10,
                 "q": q,
-                "key": API_KEY,
+                "key": YOUTUBE_API_KEY,
             },
         )
 
-        data = res.json()
+    data = res.json()
 
-        return [
-            {
-                "youtubeId": item["id"]["videoId"],
-                "title": item["snippet"]["title"],
-                "artist": item["snippet"]["channelTitle"],
-            }
-            for item in data.get("items", [])
-            if item["id"].get("videoId")
-        ]
-
-    except Exception:
-        return []
-
+    return [
+        {
+            "youtubeId": item["id"]["videoId"],
+            "title": item["snippet"]["title"],
+            "artist": item["snippet"]["channelTitle"],
+        }
+        for item in data.get("items", [])
+        if item["id"].get("videoId")
+    ]
 
 # =====================================================
-# ADD SONG (SIN WS)
+# ADD SONG (SUPABASE)
 # =====================================================
 
 @app.post("/queue/add")
 async def add_song(song: SongCreate):
 
-    song_id = str(uuid4())
-
     try:
-        with engine.begin() as conn:
+        # 1. ver si hay alguien playing
+        playing = supabase.table("songs") \
+            .select("id") \
+            .eq("status", "playing") \
+            .limit(1) \
+            .execute()
 
-            playing = conn.execute(text("""
-                SELECT id FROM songs
-                WHERE status='playing'
-                LIMIT 1
-                FOR UPDATE
-            """)).fetchone()
+        status = "queued" if playing.data else "playing"
 
-            status = "queued" if playing else "playing"
+        # 2. insert song
+        song_id = str(uuid4())
 
-            conn.execute(text("""
-                INSERT INTO songs (
-                    id, owner_id, title, artist, youtube_id,
-                    status, created_at, updated_at
-                )
-                VALUES (
-                    :id, :owner_id, :title, :artist, :youtube_id,
-                    :status, :created_at, :updated_at
-                )
-            """), {
-                "id": song_id,
-                "owner_id": song.owner_id,
-                "title": song.title,
-                "artist": song.artist,
-                "youtube_id": song.youtube_id,
-                "status": status,
-                "created_at": now_ms(),
-                "updated_at": now_ms(),
-            })
+        res = supabase.table("songs").insert({
+            "id": song_id,
+            "owner_id": song.owner_id,
+            "title": song.title,
+            "artist": song.artist,
+            "youtube_id": song.youtube_id,
+            "status": status,
+            "created_at": now_ms(),
+            "updated_at": now_ms(),
+        }).execute()
 
-        return {"ok": True, "id": song_id, "status": status}
+        return {
+            "ok": True,
+            "id": song_id,
+            "status": status
+        }
 
     except Exception as e:
         raise HTTPException(500, str(e))
-
 
 # =====================================================
 # NEXT SONG
@@ -185,30 +125,39 @@ async def add_song(song: SongCreate):
 @app.post("/queue/next")
 async def next_song():
 
-    with engine.begin() as conn:
+    try:
+        # 1. terminar actual
+        supabase.table("songs") \
+            .update({
+                "status": "done",
+                "updated_at": now_ms()
+            }) \
+            .eq("status", "playing") \
+            .execute()
 
-        conn.execute(text("""
-            UPDATE songs
-            SET status='done', updated_at=:t
-            WHERE status='playing'
-        """), {"t": now_ms()})
+        # 2. siguiente
+        nxt = supabase.table("songs") \
+            .select("id") \
+            .eq("status", "queued") \
+            .order("created_at") \
+            .limit(1) \
+            .execute()
 
-        nxt = conn.execute(text("""
-            SELECT id FROM songs
-            WHERE status='queued'
-            ORDER BY created_at ASC
-            LIMIT 1
-        """)).fetchone()
+        if nxt.data:
+            song_id = nxt.data[0]["id"]
 
-        if nxt:
-            conn.execute(text("""
-                UPDATE songs
-                SET status='playing', updated_at=:t
-                WHERE id=:id
-            """), {"t": now_ms(), "id": nxt[0]})
+            supabase.table("songs") \
+                .update({
+                    "status": "playing",
+                    "updated_at": now_ms()
+                }) \
+                .eq("id", song_id) \
+                .execute()
 
-    return {"ok": True}
+        return {"ok": True}
 
+    except Exception as e:
+        raise HTTPException(500, str(e))
 
 # =====================================================
 # EDIT
@@ -217,24 +166,21 @@ async def next_song():
 @app.put("/queue/edit/{song_id}")
 async def edit_song(song_id: str, data: SongUpdate):
 
-    execute("""
-        UPDATE songs
-        SET
-            title=COALESCE(:title, title),
-            artist=COALESCE(:artist, artist),
-            youtube_id=COALESCE(:youtube_id, youtube_id),
-            updated_at=:t
-        WHERE id=:id
-    """, {
-        "title": data.title,
-        "artist": data.artist,
-        "youtube_id": data.youtube_id,
-        "t": now_ms(),
-        "id": song_id,
-    })
+    try:
+        supabase.table("songs") \
+            .update({
+                "title": data.title,
+                "artist": data.artist,
+                "youtube_id": data.youtube_id,
+                "updated_at": now_ms()
+            }) \
+            .eq("id", song_id) \
+            .execute()
 
-    return {"ok": True}
+        return {"ok": True}
 
+    except Exception as e:
+        raise HTTPException(500, str(e))
 
 # =====================================================
 # CANCEL
@@ -243,10 +189,16 @@ async def edit_song(song_id: str, data: SongUpdate):
 @app.put("/queue/cancel/{song_id}")
 async def cancel_song(song_id: str):
 
-    execute("""
-        UPDATE songs
-        SET status='cancelled', updated_at=:t
-        WHERE id=:id
-    """, {"t": now_ms(), "id": song_id})
+    try:
+        supabase.table("songs") \
+            .update({
+                "status": "cancelled",
+                "updated_at": now_ms()
+            }) \
+            .eq("id", song_id) \
+            .execute()
 
-    return {"ok": True}
+        return {"ok": True}
+
+    except Exception as e:
+        raise HTTPException(500, str(e))
