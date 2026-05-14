@@ -1,7 +1,6 @@
 import {
   useState,
   useEffect,
-  useMemo,
   useRef,
 } from "react"
 
@@ -20,12 +19,18 @@ function MobilePage() {
     isReady,
 
     user,
-    queue = [],
+    queue,
     currentSong,
 
     registerUser,
     addSong,
   } = useKaraoke()
+
+  // =========================
+  // SAFE GUARDS (🔥 CRASH PROOF)
+  // =========================
+  const safeQueue = Array.isArray(queue) ? queue : []
+  const safeUser = user && typeof user === "object" ? user : null
 
   // =========================
   // LOCAL STATE
@@ -34,17 +39,17 @@ function MobilePage() {
   const [results, setResults] = useState([])
   const [loading, setLoading] = useState(false)
 
-  const authModalShown = useRef(false)
+  const authShown = useRef(false)
 
   // =========================
-  // AUTH MODAL (ONLY ON STATE CHANGE)
+  // AUTH MODAL (SAFE SIDE EFFECT)
   // =========================
   useEffect(() => {
 
     if (appState !== "AUTH") return
-    if (authModalShown.current) return
+    if (authShown.current) return
 
-    authModalShown.current = true
+    authShown.current = true
 
     Swal.fire({
       title: "Bienvenido 🎤",
@@ -57,7 +62,6 @@ function MobilePage() {
       preConfirm: async (value) => {
 
         const name = value?.trim()
-
         if (!name) {
           Swal.showValidationMessage("Nombre inválido")
           return false
@@ -69,6 +73,38 @@ function MobilePage() {
     })
 
   }, [appState, registerUser])
+
+  // =========================
+  // DEBOUNCE SAFE (NO useMemo → NO #310 CRASH)
+  // =========================
+  const debounceRef = useRef(null)
+
+  if (!debounceRef.current) {
+    debounceRef.current = debounce(async (value) => {
+
+      if (!value || value.length < 3) {
+        setResults([])
+        return
+      }
+
+      setLoading(true)
+
+      try {
+        const res = await searchYouTube(value)
+        setResults(res || [])
+      } catch {
+        setResults([])
+      } finally {
+        setLoading(false)
+      }
+
+    }, 500)
+  }
+
+  const handleSearch = (value) => {
+    setSearch(value)
+    debounceRef.current(value)
+  }
 
   // =========================
   // BOOT STATES
@@ -98,37 +134,7 @@ function MobilePage() {
   }
 
   // =========================
-  // SEARCH (STABLE)
-  // =========================
-  const debouncedSearch = useMemo(() =>
-    debounce(async (value) => {
-
-      if (!value || value.length < 3) {
-        setResults([])
-        return
-      }
-
-      setLoading(true)
-
-      try {
-        const res = await searchYouTube(value)
-        setResults(res || [])
-      } catch {
-        setResults([])
-      } finally {
-        setLoading(false)
-      }
-
-    }, 500)
-  , [])
-
-  const handleSearch = (value) => {
-    setSearch(value)
-    debouncedSearch(value)
-  }
-
-  // =========================
-  // ADD SONG
+  // ADD SONG SAFE
   // =========================
   const handleAddSong = async (song) => {
     await addSong(song)
@@ -143,7 +149,7 @@ function MobilePage() {
     <div className="min-h-screen bg-black text-white pb-24">
 
       <div className="text-center pt-4 text-sm text-zinc-400">
-        Bienvenido, {user?.artist_name}
+        Bienvenido, {safeUser?.artist_name || "Artista"}
       </div>
 
       <h1 className="text-center text-4xl font-black mt-3">
@@ -154,8 +160,8 @@ function MobilePage() {
         <input
           value={search}
           onChange={(e) => handleSearch(e.target.value)}
-          placeholder="Buscar canción..."
           className="w-full p-4 bg-black border border-cyan-500 rounded-xl"
+          placeholder="Buscar canción..."
         />
       </div>
 
@@ -189,7 +195,7 @@ function MobilePage() {
       </div>
 
       <div className="fixed bottom-0 w-full bg-black text-center py-3 border-t border-zinc-800">
-        Cola: {queue.length}
+        Cola: {safeQueue.length}
       </div>
 
     </div>

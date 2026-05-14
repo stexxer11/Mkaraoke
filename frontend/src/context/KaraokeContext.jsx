@@ -23,10 +23,9 @@ const KaraokeContext = createContext()
 export function KaraokeProvider({ children }) {
 
   // =========================
-  // STATE MACHINE
+  // APP STATE MACHINE
   // =========================
   const [appState, setAppState] = useState("BOOTING")
-  // BOOTING → AUTH → READY
 
   // =========================
   // USER
@@ -46,25 +45,26 @@ export function KaraokeProvider({ children }) {
   })
 
   // =========================
-  // QUEUE
+  // QUEUE (RAW)
   // =========================
   const [queue, setQueue] = useState([])
 
   // =========================
-  // CURRENT SONG
+  // SAFE QUEUE (🔥 CRASH PROOF)
   // =========================
-  const currentSong = useMemo(
-    () => queue.find(s => s.status === "playing") || null,
-    [queue]
-  )
+  const safeQueue = useMemo(() => {
+    return Array.isArray(queue) ? queue : []
+  }, [queue])
 
   // =========================
-  // WS
+  // CURRENT SONG SAFE
   // =========================
-  const socketRef = useRef(null)
+  const currentSong = useMemo(() => {
+    return safeQueue.find(s => s?.status === "playing") || null
+  }, [safeQueue])
 
   // =========================
-  // LOAD USER (BOOT FLOW)
+  // LOAD USER (BOOT SAFE)
   // =========================
   useEffect(() => {
 
@@ -86,7 +86,7 @@ export function KaraokeProvider({ children }) {
           setAppState("AUTH")
         }
 
-      } catch (e) {
+      } catch {
         setUser(null)
         setAppState("AUTH")
       }
@@ -121,14 +121,14 @@ export function KaraokeProvider({ children }) {
   }
 
   // =========================
-  // ACTIONS
+  // ACTIONS SAFE WRAPPERS
   // =========================
   const addSong = async (song) => {
     return addSongApi({
       ownerId: deviceId,
-      title: song.title,
-      artist: song.artist,
-      youtubeId: song.youtubeId,
+      title: song?.title || "",
+      artist: song?.artist || "",
+      youtubeId: song?.youtubeId || "",
     })
   }
 
@@ -148,7 +148,7 @@ export function KaraokeProvider({ children }) {
     removeSongApi(id)
 
   // =========================
-  // DERIVED FLAGS
+  // FLAGS
   // =========================
   const isBooting = appState === "BOOTING"
   const isAuth = appState === "AUTH"
@@ -160,25 +160,21 @@ export function KaraokeProvider({ children }) {
   return (
     <KaraokeContext.Provider value={{
 
-      // STATE MACHINE
       appState,
       isBooting,
       isAuth,
       isReady,
 
-      // USER
       user,
       registerUser,
 
-      // DEVICE
       deviceId,
 
-      // QUEUE
-      queue,
-      setQueue,
+      queue: safeQueue,   // 🔥 IMPORTANT
       currentSong,
 
-      // ACTIONS
+      setQueue,
+
       addSong,
       editSong,
       cancelSong,
