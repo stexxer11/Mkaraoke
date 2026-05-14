@@ -23,13 +23,7 @@ const KaraokeContext = createContext()
 export function KaraokeProvider({ children }) {
 
   // =========================
-  // USER STATE
-  // =========================
-  const [user, setUser] = useState(null)
-  const [loadingUser, setLoadingUser] = useState(true)
-
-  // =========================
-  // DEVICE ID (fallback sin auth)
+  // DEVICE ID
   // =========================
   const [deviceId] = useState(() => {
     const saved = localStorage.getItem("mk_device_id")
@@ -41,7 +35,18 @@ export function KaraokeProvider({ children }) {
   })
 
   // =========================
-  // QUEUE STATE
+  // PHASE (CLAVE REAL DEL FIX)
+  // =========================
+  const [phase, setPhase] = useState("booting")
+  // booting | onboarding | ready
+
+  // =========================
+  // USER
+  // =========================
+  const [user, setUser] = useState(null)
+
+  // =========================
+  // QUEUE
   // =========================
   const [queue, setQueue] = useState([])
   const [playerVersion, setPlayerVersion] = useState(0)
@@ -54,62 +59,54 @@ export function KaraokeProvider({ children }) {
   const reconnectTimeoutRef = useRef(null)
 
   // =========================
-  // LOAD USER
+  // BOOTSTRAP USER (SOLO 1 VEZ)
   // =========================
   useEffect(() => {
+    if (!deviceId) return
 
-    let mounted = true
-
-    const loadUser = async () => {
-      setLoadingUser(true)
+    const init = async () => {
+      setPhase("booting")
 
       try {
-
         const res = await getUserApi(deviceId)
 
-        if (!mounted) return
-
-        if (res?.id) {
+        if (res?.id && res?.artist_name) {
           setUser(res)
+          setPhase("ready")
         } else {
-          setUser(null)
+          setUser(res) // puede venir null artist_name
+          setPhase("onboarding")
         }
 
       } catch (err) {
+        console.log("USER LOAD ERROR:", err)
         setUser(null)
-      } finally {
-        if (mounted) setLoadingUser(false)
+        setPhase("onboarding")
       }
     }
 
-    if (deviceId) loadUser()
-
-    return () => {
-      mounted = false
-    }
+    init()
   }, [deviceId])
 
   // =========================
   // REGISTER USER
   // =========================
   const registerUser = async (artistName) => {
-
     try {
-
       const clean = artistName?.trim()
       if (!clean) throw new Error("Nombre inválido")
 
       const payload = {
         id: deviceId,
-        artistName: clean
+        artistName: clean,
       }
 
       await createUserApi(payload)
 
       setUser(payload)
+      setPhase("ready")
 
       return payload
-
     } catch (err) {
       console.log("CREATE USER ERROR:", err)
       return null
@@ -117,7 +114,7 @@ export function KaraokeProvider({ children }) {
   }
 
   // =========================
-  // DERIVED STATE
+  // DERIVADOS
   // =========================
   const currentSong = useMemo(
     () => queue.find(s => s.status === "playing") || null,
@@ -146,7 +143,7 @@ export function KaraokeProvider({ children }) {
   )
 
   // =========================
-  // WS SAFE SEND
+  // SAFE WS SEND
   // =========================
   const safeSend = (data) => {
     const ws = socketRef.current
@@ -158,26 +155,24 @@ export function KaraokeProvider({ children }) {
   // WEBSOCKET
   // =========================
   useEffect(() => {
+    if (phase === "booting") return
 
     let shouldReconnect = true
 
     const connect = () => {
+      const base = import.meta.env.VITE_WS_URL
 
-      const url =
-        `${import.meta.env.VITE_WS_URL?.replace("https", "wss")}/ws`
+      if (!base) return
 
-      if (!url) return
+      const url = base
+        .replace("https://", "wss://")
+        .replace("http://", "ws://")
 
-      const ws = new WebSocket(url)
+      const ws = new WebSocket(`${url}/ws`)
       socketRef.current = ws
 
       ws.onopen = () => {
         reconnectRef.current = 0
-
-        safeSend({
-          type: "GET_STATE",
-          deviceId
-        })
       }
 
       ws.onmessage = (event) => {
@@ -203,7 +198,6 @@ export function KaraokeProvider({ children }) {
       ws.onerror = () => console.log("WS ERROR")
 
       ws.onclose = () => {
-
         if (!shouldReconnect) return
 
         const timeout = Math.min(
@@ -228,13 +222,12 @@ export function KaraokeProvider({ children }) {
       socketRef.current?.close()
     }
 
-  }, [deviceId])
+  }, [phase])
 
   // =========================
   // ACTIONS
   // =========================
   const addSong = async (songData) => {
-
     try {
       return await addSongApi({
         ownerId: deviceId,
@@ -242,7 +235,6 @@ export function KaraokeProvider({ children }) {
         artist: songData.artist,
         youtubeId: songData.youtubeId,
       })
-
     } catch (err) {
       return { ok: false, error: err.message }
     }
@@ -269,19 +261,23 @@ export function KaraokeProvider({ children }) {
   return (
     <KaraokeContext.Provider value={{
 
+      // STATE
+      phase,
+      user,
+      loadingUser: phase === "booting",
+
       queue,
       visibleQueue,
       activeQueue,
       currentSong,
-
       playerVersion,
-
       mySongs,
 
-      user,
-      loadingUser,
-      registerUser,
+      // IDENTITY
+      deviceId,
 
+      // ACTIONS
+      registerUser,
       addSong,
       editSong,
       cancelSong,
@@ -290,7 +286,6 @@ export function KaraokeProvider({ children }) {
       removeSongById,
 
       safeSend,
-      deviceId,
     }}>
       {children}
     </KaraokeContext.Provider>

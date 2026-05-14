@@ -20,13 +20,12 @@ from ws_manager import manager
 
 API_KEY = os.getenv("YOUTUBE_API_KEY")
 
-
-# =====================================================
-# HTTP CLIENT LIFECYCLE (MODERNO)
-# =====================================================
-
 http_client: httpx.AsyncClient | None = None
 
+
+# =====================================================
+# LIFECYCLE
+# =====================================================
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -38,10 +37,6 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 
-
-# =====================================================
-# CORS
-# =====================================================
 
 app.add_middleware(
     CORSMiddleware,
@@ -83,12 +78,6 @@ def execute(query, params=None):
 # SERIALIZERS
 # =====================================================
 
-def serialize_user(row):
-    if not row:
-        return None
-    return {"id": row[0], "artist_name": row[1]}
-
-
 def serialize_song(row):
     if not row:
         return None
@@ -102,60 +91,6 @@ def serialize_song(row):
         "created_at": row[6],
         "updated_at": row[7],
     }
-
-
-# =====================================================
-# STATUS
-# =====================================================
-
-@app.get("/status")
-def status():
-    return {"ok": True, "service": "mkaraoke-api"}
-
-
-# =====================================================
-# USERS
-# =====================================================
-
-@app.get("/user/{user_id}")
-def get_user(user_id: str):
-    row = fetch_one(
-        "SELECT id, artist_name FROM users WHERE id=:id",
-        {"id": user_id},
-    )
-
-    if not row:
-        return {"id": user_id, "artist_name": None}
-
-    return serialize_user(row)
-
-
-@app.post("/user")
-def create_user(user: UserCreate):
-
-    # 🔥 FIX REAL (ANTES FALLABA AQUÍ)
-    clean_name = user.artist_name.strip()
-
-    if len(clean_name) < 2:
-        raise HTTPException(400, "INVALID_ARTIST_NAME")
-
-    try:
-        execute(
-            """
-            INSERT INTO users (id, artist_name, created_at)
-            VALUES (:id, :artist_name, :created_at)
-            """,
-            {
-                "id": user.id,
-                "artist_name": clean_name,
-                "created_at": now_ms(),
-            },
-        )
-
-        return {"ok": True, "created": True}
-
-    except IntegrityError:
-        return {"ok": True, "created": False}
 
 
 # =====================================================
@@ -183,7 +118,7 @@ def get_current_song():
 
 
 # =====================================================
-# BROADCAST SAFE
+# BROADCAST
 # =====================================================
 
 async def safe_broadcast(data: dict):
@@ -214,7 +149,7 @@ async def broadcast_player():
 
 
 # =====================================================
-# SEARCH YOUTUBE
+# SEARCH
 # =====================================================
 
 @app.get("/search")
@@ -222,6 +157,9 @@ async def search(q: str = Query(...)):
 
     if not API_KEY or len(q.strip()) < 3:
         return []
+
+    if http_client is None:
+        raise HTTPException(500, "HTTP_CLIENT_NOT_READY")
 
     try:
         res = await http_client.get(
@@ -252,7 +190,7 @@ async def search(q: str = Query(...)):
 
 
 # =====================================================
-# WEBSOCKET
+# WS
 # =====================================================
 
 @app.websocket("/ws")
@@ -276,11 +214,11 @@ async def websocket_endpoint(websocket: WebSocket):
             await websocket.receive_text()
 
     except WebSocketDisconnect:
-        manager.disconnect(websocket)
+        await manager.disconnect(websocket)
 
 
 # =====================================================
-# ADD SONG
+# ADD SONG (FIX ATÓMICO)
 # =====================================================
 
 @app.post("/queue/add")
@@ -288,24 +226,27 @@ async def add_song(song: SongCreate):
 
     song_id = str(uuid4())
 
-    playing = fetch_one(
-        "SELECT id FROM songs WHERE status='playing' LIMIT 1"
-    )
+    with engine.begin() as conn:
 
-    status = "queued" if playing else "playing"
+        playing = conn.execute(text("""
+            SELECT id FROM songs
+            WHERE status='playing'
+            FOR UPDATE
+            LIMIT 1
+        """)).fetchone()
 
-    execute(
-        """
-        INSERT INTO songs (
-            id, owner_id, title, artist, youtube_id,
-            status, created_at, updated_at
-        )
-        VALUES (
-            :id, :owner_id, :title, :artist, :youtube_id,
-            :status, :created_at, :updated_at
-        )
-        """,
-        {
+        status = "queued" if playing else "playing"
+
+        conn.execute(text("""
+            INSERT INTO songs (
+                id, owner_id, title, artist, youtube_id,
+                status, created_at, updated_at
+            )
+            VALUES (
+                :id, :owner_id, :title, :artist, :youtube_id,
+                :status, :created_at, :updated_at
+            )
+        """), {
             "id": song_id,
             "owner_id": song.ownerId,
             "title": song.title,
@@ -314,8 +255,7 @@ async def add_song(song: SongCreate):
             "status": status,
             "created_at": now_ms(),
             "updated_at": now_ms(),
-        },
-    )
+        })
 
     await broadcast_queue()
 
@@ -326,31 +266,34 @@ async def add_song(song: SongCreate):
 
 
 # =====================================================
-# NEXT SONG
+# NEXT SONG (FIX ATÓMICO)
 # =====================================================
 
 @app.post("/queue/next")
 async def next_song():
 
-    execute("""
-        UPDATE songs
-        SET status='done', updated_at=:t
-        WHERE status='playing'
-    """, {"t": now_ms()})
+    with engine.begin() as conn:
 
-    nxt = fetch_one("""
-        SELECT id FROM songs
-        WHERE status='queued'
-        ORDER BY created_at ASC
-        LIMIT 1
-    """)
-
-    if nxt:
-        execute("""
+        conn.execute(text("""
             UPDATE songs
-            SET status='playing', updated_at=:t
-            WHERE id=:id
-        """, {"t": now_ms(), "id": nxt[0]})
+            SET status='done', updated_at=:t
+            WHERE status='playing'
+        """), {"t": now_ms()})
+
+        nxt = conn.execute(text("""
+            SELECT id FROM songs
+            WHERE status='queued'
+            ORDER BY created_at ASC
+            LIMIT 1
+            FOR UPDATE
+        """)).fetchone()
+
+        if nxt:
+            conn.execute(text("""
+                UPDATE songs
+                SET status='playing', updated_at=:t
+                WHERE id=:id
+            """), {"t": now_ms(), "id": nxt[0]})
 
     await broadcast_queue()
     await broadcast_player()
