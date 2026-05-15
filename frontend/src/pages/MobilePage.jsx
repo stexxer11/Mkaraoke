@@ -6,7 +6,6 @@ import {
 } from "react"
 
 import debounce from "lodash.debounce"
-import Swal from "sweetalert2"
 
 import { useKaraoke } from "../context/KaraokeContext"
 import { searchYouTube } from "../services/youtubeApi"
@@ -22,90 +21,25 @@ function MobilePage() {
     setArtistName
   } = useKaraoke()
 
-  // =========================
-  // STATES
-  // =========================
   const [booting, setBooting] = useState(true)
-  const [appReady, setAppReady] = useState(false)
-
   const [search, setSearch] = useState("")
   const [results, setResults] = useState([])
   const [searchLoading, setSearchLoading] = useState(false)
 
-  const alertShown = useRef(false)
   const lastSearch = useRef(0)
 
   const RULES = {
     MIN_SEARCH_LENGTH: 3,
-    SEARCH_COOLDOWN_MS: 1500,
+    SEARCH_COOLDOWN_MS: 1200,
   }
 
   // =========================
   // BOOT
   // =========================
   useEffect(() => {
-    const t = setTimeout(() => setBooting(false), 1000)
+    const t = setTimeout(() => setBooting(false), 800)
     return () => clearTimeout(t)
   }, [])
-
-  // =========================
-  // ENTER FLOW (CORE)
-  // =========================
-  useEffect(() => {
-
-    if (loading) return
-    if (!session?.user?.id) return
-
-    // si ya tiene perfil → entra directo
-    if (user?.artist_name) {
-      setAppReady(true)
-      return
-    }
-
-    // evitar doble popup
-    if (alertShown.current) return
-    alertShown.current = true
-
-    Swal.fire({
-      title: "🎤 Bienvenido a MKARAOKE",
-      text: "Escribe tu nombre artístico",
-      input: "text",
-      inputPlaceholder: "Ej: MX23",
-      background: "#000",
-      color: "#06b6d4",
-      allowOutsideClick: false,
-      allowEscapeKey: false,
-      confirmButtonText: "Entrar",
-
-      preConfirm: async (value) => {
-
-        const name = value?.trim()
-
-        if (!name) {
-          Swal.showValidationMessage("Nombre inválido")
-          return false
-        }
-
-        try {
-
-          await setArtistName(name)
-
-          setAppReady(true)
-
-          return true
-
-        } catch (e) {
-
-          console.error(e)
-
-          Swal.showValidationMessage("Error guardando nombre")
-
-          return false
-        }
-      }
-    })
-
-  }, [session, user, loading])
 
   // =========================
   // SEARCH
@@ -134,8 +68,6 @@ function MobilePage() {
 
       } catch (e) {
 
-        console.error(e)
-
         setResults([])
 
       } finally {
@@ -143,7 +75,7 @@ function MobilePage() {
         setSearchLoading(false)
       }
 
-    }, 500)
+    }, 400)
   , [])
 
   const handleSearch = (value) => {
@@ -155,11 +87,7 @@ function MobilePage() {
   // LOGIN
   // =========================
   async function handleLogin() {
-    try {
-      await loginWithGoogle()
-    } catch (e) {
-      console.error(e)
-    }
+    await loginWithGoogle()
   }
 
   // =========================
@@ -167,12 +95,10 @@ function MobilePage() {
   // =========================
   async function handleLogout() {
     await logout()
-    setAppReady(false)
-    alertShown.current = false
   }
 
   // =========================
-  // BOOT SCREEN
+  // BOOT
   // =========================
   if (booting || loading) {
     return (
@@ -183,7 +109,7 @@ function MobilePage() {
   }
 
   // =========================
-  // LOGIN SCREEN
+  // LOGIN
   // =========================
   if (!session) {
     return (
@@ -197,7 +123,7 @@ function MobilePage() {
           onClick={handleLogin}
           className="px-6 py-3 bg-cyan-500 text-black rounded-xl font-bold"
         >
-          Login con Google
+          Entrar con Google
         </button>
 
       </div>
@@ -205,18 +131,7 @@ function MobilePage() {
   }
 
   // =========================
-  // PROFILE LOADING
-  // =========================
-  if (!appReady) {
-    return (
-      <div className="min-h-screen bg-black flex items-center justify-center text-cyan-400">
-        <p className="animate-pulse">Preparando perfil...</p>
-      </div>
-    )
-  }
-
-  // =========================
-  // MAIN APP
+  // MAIN APP (SIEMPRE ENTRA AQUÍ)
   // =========================
   return (
     <div className="min-h-screen bg-black text-white pb-24 relative">
@@ -229,9 +144,9 @@ function MobilePage() {
         Logout
       </button>
 
-      {/* WELCOME */}
+      {/* USER */}
       <div className="text-center pt-6 text-cyan-400 text-sm">
-        Bienvenido {user?.artist_name}
+        Bienvenido {user?.artist_name || user?.email}
       </div>
 
       {/* TITLE */}
