@@ -8,6 +8,7 @@ import {
 import debounce from "lodash.debounce"
 import Swal from "sweetalert2"
 
+import { supabase } from "../lib/supabase"
 import { useKaraoke } from "../context/KaraokeContext"
 import { searchYouTube } from "../services/youtubeApi"
 
@@ -33,16 +34,13 @@ function MobilePage() {
   const lastSearch = useRef(0)
   const alertShown = useRef(false)
 
-  // =========================
-  // RULES (KARAOKE ENGINE)
-  // =========================
   const RULES = {
     MIN_SEARCH_LENGTH: 3,
     SEARCH_COOLDOWN_MS: 1200
   }
 
   // =========================
-  // BOOT SCREEN
+  // BOOT
   // =========================
   useEffect(() => {
     const t = setTimeout(() => setBooting(false), 800)
@@ -50,7 +48,7 @@ function MobilePage() {
   }, [])
 
   // =========================
-  // REQUIRE ARTIST NAME (SOFT ONBOARDING)
+  // REQUIRE ARTIST NAME
   // =========================
   const requireArtistName = async () => {
 
@@ -79,15 +77,14 @@ function MobilePage() {
     }
 
     try {
-
       await setArtistName(name)
 
       await Swal.fire({
-        title: "🔥 Bienvenido al escenario",
+        title: "🔥 Bienvenido",
         text: `Listo ${name}`,
         background: "#000",
         color: "#06b6d4",
-        timer: 1500,
+        timer: 1200,
         showConfirmButton: false
       })
 
@@ -95,14 +92,13 @@ function MobilePage() {
       return true
 
     } catch (e) {
-
       alertShown.current = false
       return false
     }
   }
 
   // =========================
-  // KARAOKE FORCE QUERY
+  // FORCE KARAOKE QUERY
   // =========================
   const forceKaraokeQuery = (text) => {
 
@@ -119,13 +115,11 @@ function MobilePage() {
       text.toLowerCase().includes(k)
     )
 
-    return ok
-      ? text
-      : `${text} karaoke instrumental lyrics`
+    return ok ? text : `${text} karaoke instrumental lyrics`
   }
 
   // =========================
-  // SEARCH ENGINE (YOUTUBE API)
+  // SEARCH (debounced)
   // =========================
   const debouncedSearch = useMemo(() =>
     debounce(async (value) => {
@@ -164,13 +158,9 @@ function MobilePage() {
     return () => debouncedSearch.cancel()
   }, [debouncedSearch])
 
-  // =========================
-  // SEARCH HANDLER
-  // =========================
   const handleSearch = async (value) => {
 
     const ok = await requireArtistName()
-
     if (!ok) return
 
     setSearch(value)
@@ -178,12 +168,11 @@ function MobilePage() {
   }
 
   // =========================
-  // ADD SONG (SAFE ACTION)
+  // ADD SONG → SUPABASE
   // =========================
   const handleAddSong = async (song) => {
 
     const ok = await requireArtistName()
-
     if (!ok) return
 
     await Swal.fire({
@@ -191,29 +180,54 @@ function MobilePage() {
       text: song.title,
       background: "#000",
       color: "#06b6d4",
-      timer: 800,
+      timer: 600,
       showConfirmButton: false
     })
 
-    console.log("ADD SONG:", song)
+    try {
 
-    setSearch("")
-    setResults([])
+      const { error } = await supabase
+        .from("songs")
+        .insert({
+          user_id: user.id,
+          youtube_id: song.youtubeId,
+          title: song.title,
+          artist: song.artist,
+          thumbnail: `https://img.youtube.com/vi/${song.youtubeId}/hqdefault.jpg`,
+          status: "queued"
+        })
+
+      if (error) throw error
+
+      setSearch("")
+      setResults([])
+
+      await Swal.fire({
+        title: "✔ Agregada",
+        text: "En cola de karaoke",
+        background: "#000",
+        color: "#06b6d4",
+        timer: 900,
+        showConfirmButton: false
+      })
+
+    } catch (err) {
+      console.error("ERROR ADD SONG:", err)
+
+      Swal.fire({
+        title: "Error",
+        text: "No se pudo guardar la canción",
+        background: "#000",
+        color: "#ff4d4d"
+      })
+    }
   }
 
   // =========================
-  // LOGIN
+  // LOGIN / LOGOUT
   // =========================
-  async function handleLogin() {
-    await loginWithGoogle()
-  }
-
-  // =========================
-  // LOGOUT
-  // =========================
-  async function handleLogout() {
-    await logout()
-  }
+  const handleLogin = async () => loginWithGoogle()
+  const handleLogout = async () => logout()
 
   // =========================
   // LOADING
@@ -233,9 +247,7 @@ function MobilePage() {
     return (
       <div className="min-h-screen bg-black flex flex-col items-center justify-center gap-4 text-white">
 
-        <h1 className="text-4xl font-black">
-          MKARAOKE 🎤
-        </h1>
+        <h1 className="text-4xl font-black">MKARAOKE 🎤</h1>
 
         <button
           onClick={handleLogin}
@@ -249,12 +261,11 @@ function MobilePage() {
   }
 
   // =========================
-  // MAIN APP
+  // UI
   // =========================
   return (
     <div className="min-h-screen bg-black text-white pb-24 relative">
 
-      {/* LOGOUT */}
       <button
         onClick={handleLogout}
         className="absolute top-3 right-3 px-3 py-1 bg-red-500 text-black text-xs rounded-lg"
@@ -262,19 +273,16 @@ function MobilePage() {
         Logout
       </button>
 
-      {/* USER HEADER */}
       <div className="text-center pt-6 text-cyan-400 text-sm">
         Bienvenido {user?.artist_name || user?.email}
       </div>
 
-      {/* TITLE */}
       <div className="text-center pt-4">
         <h1 className="text-4xl font-black">
           M<span className="text-cyan-400">KARAOKE</span>
         </h1>
       </div>
 
-      {/* SEARCH INPUT */}
       <div className="px-4 mt-5">
         <input
           value={search}
@@ -284,7 +292,6 @@ function MobilePage() {
         />
       </div>
 
-      {/* RESULTS */}
       <div className="px-4 mt-5 space-y-3">
 
         {searchLoading && (
@@ -321,7 +328,6 @@ function MobilePage() {
 
       </div>
 
-      {/* FOOTER */}
       <div className="fixed bottom-0 w-full bg-black/90 text-center py-3 text-zinc-500 border-t border-zinc-800">
         MKARAOKE • modo live
       </div>

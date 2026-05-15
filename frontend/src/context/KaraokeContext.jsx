@@ -19,26 +19,55 @@ export function KaraokeProvider({ children }) {
   const [loading, setLoading] = useState(true)
   const [profileLoading, setProfileLoading] = useState(false)
 
-  const profileFetchedRef = useRef(false)
+  const initDone = useRef(false)
 
   // =========================
-  // LOAD PROFILE SAFE
+  // CREATE OR UPDATE USER
   // =========================
-  const loadProfile = async (userId) => {
-    if (!userId) return
+  const upsertUser = async (authUser) => {
+
+    if (!authUser?.id) return null
+
+    const { data, error } = await supabase
+      .from("users")
+      .upsert({
+        id: authUser.id,
+        email: authUser.email,
+        artist_name: authUser.user_metadata?.name || null,
+        avatar_url: authUser.user_metadata?.avatar_url || null
+      })
+      .select()
+      .single()
+
+    if (error) {
+      console.error("UPSERT USER ERROR:", error)
+      return null
+    }
+
+    return data
+  }
+
+  // =========================
+  // LOAD PROFILE
+  // =========================
+  const loadProfile = async (authUser) => {
+
+    if (!authUser?.id) return
 
     try {
       setProfileLoading(true)
 
-      const profile = await getUserProfile(userId)
+      let profile = await getUserProfile(authUser.id)
 
-      setUser(profile || null)
-      profileFetchedRef.current = true
+      // si no existe → lo creamos
+      if (!profile) {
+        profile = await upsertUser(authUser)
+      }
+
+      setUser(profile)
 
     } catch (err) {
       console.error("PROFILE ERROR:", err)
-
-      // si falla por RLS o 403, NO romper la app
       setUser(null)
 
     } finally {
@@ -53,51 +82,40 @@ export function KaraokeProvider({ children }) {
 
     let mounted = true
 
-    async function init() {
-      try {
+    const init = async () => {
 
-        const { data, error } = await supabase.auth.getSession()
+      const { data } = await supabase.auth.getSession()
+      const session = data?.session || null
 
-        if (error) {
-          console.error("SESSION ERROR:", error)
-        }
+      if (!mounted) return
 
-        const session = data?.session || null
+      setSession(session)
 
-        if (!mounted) return
-
-        setSession(session)
-
-        if (session?.user?.id) {
-          await loadProfile(session.user.id)
-        }
-
-      } catch (e) {
-        console.error("INIT AUTH ERROR:", e)
-      } finally {
-        if (mounted) setLoading(false)
+      if (session?.user && !initDone.current) {
+        initDone.current = true
+        await loadProfile(session.user)
       }
+
+      setLoading(false)
     }
 
     init()
 
     // =========================
-    // LISTENER AUTH CHANGE
+    // AUTH CHANGE
     // =========================
     const { data: listener } =
-      supabase.auth.onAuthStateChange(
-        async (_, newSession) => {
+      supabase.auth.onAuthStateChange(async (_, newSession) => {
 
-          setSession(newSession)
+        setSession(newSession)
 
+        if (newSession?.user) {
+          await loadProfile(newSession.user)
+        } else {
           setUser(null)
-          profileFetchedRef.current = false
-
-          if (newSession?.user?.id) {
-            await loadProfile(newSession.user.id)
-          }
         }
-      )
+
+      })
 
     return () => {
       mounted = false
@@ -107,41 +125,36 @@ export function KaraokeProvider({ children }) {
   }, [])
 
   // =========================
-  // SAFE UPSERT USER PROFILE
+  // SET ARTIST NAME
   // =========================
   async function setArtistName(name) {
 
-    if (!session?.user?.id) return
+    if (!session?.user) return
 
-    try {
+    const { data, error } = await supabase
+      .from("users")
+      .update({
+        artist_name: name
+      })
+      .eq("id", session.user.id)
+      .select()
+      .single()
 
-      const { data, error } = await supabase
-        .from("users")
-        .upsert({
-          id: session.user.id,
-          email: session.user.email,
-          artist_name: name
-        })
-        .select()
-        .single()
-
-      if (error) throw error
-
-      setUser(data)
-      return data
-
-    } catch (err) {
-      console.error("SET ARTIST ERROR:", err)
-      throw err
+    if (error) {
+      console.error("SET ARTIST ERROR:", error)
+      throw error
     }
+
+    setUser(data)
+    return data
   }
 
   // =========================
-  // REFRESH PROFILE MANUAL
+  // REFRESH PROFILE
   // =========================
   async function refreshProfile() {
-    if (!session?.user?.id) return
-    await loadProfile(session.user.id)
+    if (!session?.user) return
+    await loadProfile(session.user)
   }
 
   return (
