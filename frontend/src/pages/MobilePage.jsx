@@ -48,7 +48,7 @@ function MobilePage() {
   }, [])
 
   // =========================
-  // REQUIRE ARTIST NAME
+  // REQUIRE ARTIST NAME (ONLY FOR ADD SONG)
   // =========================
   const requireArtistName = async () => {
 
@@ -59,7 +59,7 @@ function MobilePage() {
 
     const { value } = await Swal.fire({
       title: "🎤 Nombre artístico",
-      text: "Antes de usar el karaoke necesitas un nombre",
+      text: "Antes de agregar canciones necesitas un nombre",
       input: "text",
       inputPlaceholder: "Ej: DJ ROLANDO",
       background: "#000",
@@ -88,12 +88,12 @@ function MobilePage() {
         showConfirmButton: false
       })
 
-      alertShown.current = false
       return true
 
     } catch (e) {
-      alertShown.current = false
       return false
+    } finally {
+      alertShown.current = false
     }
   }
 
@@ -119,7 +119,7 @@ function MobilePage() {
   }
 
   // =========================
-  // SEARCH (debounced)
+  // SEARCH ENGINE
   // =========================
   const debouncedSearch = useMemo(() =>
     debounce(async (value) => {
@@ -136,7 +136,6 @@ function MobilePage() {
       lastSearch.current = now
 
       try {
-
         setSearchLoading(true)
 
         const data = await searchYouTube(
@@ -158,17 +157,16 @@ function MobilePage() {
     return () => debouncedSearch.cancel()
   }, [debouncedSearch])
 
-  const handleSearch = async (value) => {
-
-    const ok = await requireArtistName()
-    if (!ok) return
-
+  // =========================
+  // SEARCH (NO AUTH REQUIRED)
+  // =========================
+  const handleSearch = (value) => {
     setSearch(value)
     debouncedSearch(value)
   }
 
   // =========================
-  // ADD SONG → SUPABASE
+  // ADD SONG (REQUIRES ARTIST NAME)
   // =========================
   const handleAddSong = async (song) => {
 
@@ -212,7 +210,7 @@ function MobilePage() {
       })
 
     } catch (err) {
-      console.error("ERROR ADD SONG:", err)
+      console.error(err)
 
       Swal.fire({
         title: "Error",
@@ -226,8 +224,8 @@ function MobilePage() {
   // =========================
   // LOGIN / LOGOUT
   // =========================
-  const handleLogin = async () => loginWithGoogle()
-  const handleLogout = async () => logout()
+  const handleLogin = () => loginWithGoogle()
+  const handleLogout = () => logout()
 
   // =========================
   // LOADING

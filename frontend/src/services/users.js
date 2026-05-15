@@ -1,45 +1,30 @@
 import { supabase } from "../lib/supabase"
 
-export async function createUserProfile(
-  authUser,
-  artistName
-) {
+export async function createUserProfile(authUser, artistName = null) {
+
+  if (!authUser?.id) {
+    throw new Error("Missing auth user")
+  }
 
   const payload = {
     id: authUser.id,
     email: authUser.email,
-    artist_name: artistName
+    artist_name: artistName || authUser.user_metadata?.name || null,
+    avatar_url: authUser.user_metadata?.avatar_url || null
   }
 
-  console.log("CREATING PROFILE:", payload)
+  console.log("UPSERT PROFILE:", payload)
 
-  const response = await supabase
+  const { data, error } = await supabase
     .from("users")
     .upsert(payload)
+    .select()
+    .single()
 
-  console.log("UPSERT RESPONSE:", response)
-
-  if (response.error) {
-    throw response.error
+  if (error) {
+    console.error("UPSERT ERROR:", error)
+    throw error
   }
 
-  return payload
-}
-
-export async function getUserProfile(userId) {
-
-  console.log("GET USER PROFILE:", userId)
-
-  const response = await supabase
-    .from("users")
-    .select("*")
-    .eq("id", userId)
-
-  console.log("PROFILE RESPONSE:", response)
-
-  if (response.error) {
-    throw response.error
-  }
-
-  return response.data?.[0] || null
+  return data
 }
