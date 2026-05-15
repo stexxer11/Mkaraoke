@@ -8,10 +8,9 @@ from supabase import create_client, Client
 
 from schemas import SongCreate, SongUpdate
 
-# =====================================================
+# =========================
 # ENV
-# =====================================================
-
+# =========================
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
 YOUTUBE_API_KEY = os.getenv("YOUTUBE_API_KEY")
@@ -20,10 +19,6 @@ if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
     raise ValueError("Faltan credenciales de Supabase")
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
-
-# =====================================================
-# APP
-# =====================================================
 
 app = FastAPI()
 
@@ -35,17 +30,15 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# =====================================================
-# UTIL
-# =====================================================
-
+# =========================
+# UTILS
+# =========================
 def now_ms():
     return int(time.time() * 1000)
 
-# =====================================================
+# =========================
 # SEARCH YOUTUBE
-# =====================================================
-
+# =========================
 @app.get("/search")
 async def search(q: str = Query(...)):
 
@@ -78,15 +71,13 @@ async def search(q: str = Query(...)):
         if item["id"].get("videoId")
     ]
 
-# =====================================================
-# ADD SONG (SUPABASE)
-# =====================================================
-
+# =========================
+# SONGS
+# =========================
 @app.post("/queue/add")
 async def add_song(song: SongCreate):
 
     try:
-        # 1. ver si hay alguien playing
         playing = supabase.table("songs") \
             .select("id") \
             .eq("status", "playing") \
@@ -95,10 +86,9 @@ async def add_song(song: SongCreate):
 
         status = "queued" if playing.data else "playing"
 
-        # 2. insert song
         song_id = str(uuid4())
 
-        res = supabase.table("songs").insert({
+        supabase.table("songs").insert({
             "id": song_id,
             "owner_id": song.owner_id,
             "title": song.title,
@@ -109,33 +99,20 @@ async def add_song(song: SongCreate):
             "updated_at": now_ms(),
         }).execute()
 
-        return {
-            "ok": True,
-            "id": song_id,
-            "status": status
-        }
+        return {"ok": True, "id": song_id, "status": status}
 
     except Exception as e:
         raise HTTPException(500, str(e))
 
-# =====================================================
-# NEXT SONG
-# =====================================================
 
 @app.post("/queue/next")
 async def next_song():
-
     try:
-        # 1. terminar actual
         supabase.table("songs") \
-            .update({
-                "status": "done",
-                "updated_at": now_ms()
-            }) \
+            .update({"status": "done", "updated_at": now_ms()}) \
             .eq("status", "playing") \
             .execute()
 
-        # 2. siguiente
         nxt = supabase.table("songs") \
             .select("id") \
             .eq("status", "queued") \
@@ -147,10 +124,7 @@ async def next_song():
             song_id = nxt.data[0]["id"]
 
             supabase.table("songs") \
-                .update({
-                    "status": "playing",
-                    "updated_at": now_ms()
-                }) \
+                .update({"status": "playing", "updated_at": now_ms()}) \
                 .eq("id", song_id) \
                 .execute()
 
@@ -159,13 +133,9 @@ async def next_song():
     except Exception as e:
         raise HTTPException(500, str(e))
 
-# =====================================================
-# EDIT
-# =====================================================
 
 @app.put("/queue/edit/{song_id}")
 async def edit_song(song_id: str, data: SongUpdate):
-
     try:
         supabase.table("songs") \
             .update({
@@ -182,13 +152,9 @@ async def edit_song(song_id: str, data: SongUpdate):
     except Exception as e:
         raise HTTPException(500, str(e))
 
-# =====================================================
-# CANCEL
-# =====================================================
 
 @app.put("/queue/cancel/{song_id}")
 async def cancel_song(song_id: str):
-
     try:
         supabase.table("songs") \
             .update({
@@ -203,40 +169,38 @@ async def cancel_song(song_id: str):
     except Exception as e:
         raise HTTPException(500, str(e))
 
-        # =====================================================
-# GET USER
-# =====================================================
-
+# =========================
+# USER (FIX CLAVE)
+# =========================
 @app.get("/user/{user_id}")
 async def get_user(user_id: str):
 
     try:
-
         res = supabase.table("users") \
             .select("*") \
             .eq("id", user_id) \
-            .limit(1) \
             .execute()
 
-        if not res.data:
-            return {}
+        # ✔ existe
+        if res.data:
+            return res.data[0]
 
-        return res.data[0]
+        # 🔥 auto-create user si no existe
+        new_user = supabase.table("users").insert({
+            "id": user_id,
+            "artist_name": "Artista"
+        }).execute()
+
+        return new_user.data[0]
 
     except Exception as e:
         raise HTTPException(500, str(e))
 
 
-# =====================================================
-# CREATE USER
-# =====================================================
-
 @app.post("/user")
 async def create_user(data: dict):
 
     try:
-
-        # evitar duplicado
         existing = supabase.table("users") \
             .select("id") \
             .eq("id", data["id"]) \
@@ -251,10 +215,7 @@ async def create_user(data: dict):
             "artist_name": data["artist_name"]
         }).execute()
 
-        return {
-            "ok": True,
-            "data": res.data
-        }
+        return {"ok": True, "data": res.data}
 
     except Exception as e:
         raise HTTPException(500, str(e))
