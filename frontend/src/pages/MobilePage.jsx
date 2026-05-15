@@ -16,168 +16,109 @@ function MobilePage() {
   const {
     session,
     user,
-    loading: contextLoading,
-
+    loading,
     loginWithGoogle,
     logout,
-    registerUser
+    setArtistName
   } = useKaraoke()
 
   // =========================
-  // LOCAL STATES
+  // STATES
   // =========================
   const [booting, setBooting] = useState(true)
-
-  const [authLoading, setAuthLoading] = useState(false)
-
-  const [profileLoading, setProfileLoading] = useState(false)
-
   const [appReady, setAppReady] = useState(false)
 
   const [search, setSearch] = useState("")
-
   const [results, setResults] = useState([])
-
   const [searchLoading, setSearchLoading] = useState(false)
 
   const alertShown = useRef(false)
-
   const lastSearch = useRef(0)
 
-  // =========================
-  // RULES
-  // =========================
   const RULES = {
     MIN_SEARCH_LENGTH: 3,
     SEARCH_COOLDOWN_MS: 1500,
   }
 
   // =========================
-  // BOOT SCREEN
+  // BOOT
   // =========================
   useEffect(() => {
-
-    const timer = setTimeout(() => {
-      setBooting(false)
-    }, 1200)
-
-    return () => clearTimeout(timer)
-
+    const t = setTimeout(() => setBooting(false), 1000)
+    return () => clearTimeout(t)
   }, [])
 
   // =========================
-  // PROFILE FLOW
+  // ENTER FLOW (CORE)
   // =========================
- useEffect(() => {
+  useEffect(() => {
 
-  if (!session?.user?.id) return
+    if (loading) return
+    if (!session?.user?.id) return
 
-  console.log("SESSION:", session)
-  console.log("USER:", user)
-
-  // usuario listo
- if (user?.artist_name && user.artist_name.length > 0){
-
-    console.log("APP READY")
-
-    setAppReady(true)
-
-    return
-  }
-
-  // evitar doble popup
-  if (alertShown.current) return
-
-  alertShown.current = true
-
-  Swal.fire({
-
-    title: "🎤 Bienvenido a MKARAOKE",
-
-    text: "Crea tu nombre artístico",
-
-    input: "text",
-
-    inputPlaceholder: "Ej: MX23",
-
-    background: "#000",
-
-    color: "#06b6d4",
-
-    allowOutsideClick: false,
-
-    allowEscapeKey: false,
-
-    confirmButtonText: "Entrar",
-
-    preConfirm: async (value) => {
-
-      const name = value?.trim()
-
-      if (!name) {
-
-        Swal.showValidationMessage(
-          "Nombre inválido"
-        )
-
-        return false
-      }
-
-      try {
-
-        setProfileLoading(true)
-
-        const profile = await registerUser(name)
-
-        console.log("REGISTERED:", profile)
-
-        // FORZAR APP READY
-        setAppReady(true)
-
-        return true
-
-      } catch (e) {
-
-        console.error("REGISTER ERROR:", e)
-
-        Swal.showValidationMessage(
-          e.message || "Error creando perfil"
-        )
-
-        return false
-
-      } finally {
-
-        setProfileLoading(false)
-
-      }
+    // si ya tiene perfil → entra directo
+    if (user?.artist_name) {
+      setAppReady(true)
+      return
     }
-  })
 
-}, [session, user])
+    // evitar doble popup
+    if (alertShown.current) return
+    alertShown.current = true
+
+    Swal.fire({
+      title: "🎤 Bienvenido a MKARAOKE",
+      text: "Escribe tu nombre artístico",
+      input: "text",
+      inputPlaceholder: "Ej: MX23",
+      background: "#000",
+      color: "#06b6d4",
+      allowOutsideClick: false,
+      allowEscapeKey: false,
+      confirmButtonText: "Entrar",
+
+      preConfirm: async (value) => {
+
+        const name = value?.trim()
+
+        if (!name) {
+          Swal.showValidationMessage("Nombre inválido")
+          return false
+        }
+
+        try {
+
+          await setArtistName(name)
+
+          setAppReady(true)
+
+          return true
+
+        } catch (e) {
+
+          console.error(e)
+
+          Swal.showValidationMessage("Error guardando nombre")
+
+          return false
+        }
+      }
+    })
+
+  }, [session, user, loading])
+
   // =========================
-  // SEARCH ENGINE
+  // SEARCH
   // =========================
   const debouncedSearch = useMemo(() =>
-
     debounce(async (value) => {
 
-      if (
-        !value ||
-        value.trim().length < RULES.MIN_SEARCH_LENGTH
-      ) {
-
+      if (!value || value.length < RULES.MIN_SEARCH_LENGTH) {
         setResults([])
-
         return
       }
 
-      if (
-        Date.now() - lastSearch.current <
-        RULES.SEARCH_COOLDOWN_MS
-      ) {
-        return
-      }
+      if (Date.now() - lastSearch.current < RULES.SEARCH_COOLDOWN_MS) return
 
       lastSearch.current = Date.now()
 
@@ -200,96 +141,43 @@ function MobilePage() {
       } finally {
 
         setSearchLoading(false)
-
       }
 
     }, 500)
-
   , [])
 
-  // =========================
-  // HANDLE SEARCH
-  // =========================
-  function handleSearch(value) {
-
+  const handleSearch = (value) => {
     setSearch(value)
-
     debouncedSearch(value)
   }
 
   // =========================
-  // HANDLE LOGIN
+  // LOGIN
   // =========================
   async function handleLogin() {
-
     try {
-
-      setAuthLoading(true)
-
       await loginWithGoogle()
-
     } catch (e) {
-
       console.error(e)
-
-      Swal.fire({
-        icon: "error",
-        title: "Error login",
-        text: e.message
-      })
-
-    } finally {
-
-      setAuthLoading(false)
-
     }
   }
 
   // =========================
-  // HANDLE LOGOUT
+  // LOGOUT
   // =========================
   async function handleLogout() {
-
-    try {
-
-      await logout()
-
-      setAppReady(false)
-
-      alertShown.current = false
-
-    } catch (e) {
-
-      console.error(e)
-
-    }
+    await logout()
+    setAppReady(false)
+    alertShown.current = false
   }
 
   // =========================
-  // GLOBAL LOADING
+  // BOOT SCREEN
   // =========================
-  if (
-    booting ||
-    contextLoading ||
-    authLoading ||
-    profileLoading
-  ) {
-
+  if (booting || loading) {
     return (
-      <div className="min-h-screen bg-black flex flex-col items-center justify-center text-cyan-400">
-
-        <div className="text-4xl font-black animate-pulse">
-          MKARAOKE
-        </div>
-
-        <p className="mt-4 text-zinc-400 animate-bounce">
-          Entrando a la arena...
-        </p>
-
-        <div className="mt-6 w-32 h-1 bg-cyan-500/30 overflow-hidden rounded">
-          <div className="h-full w-1/2 bg-cyan-400 animate-pulse"></div>
-        </div>
-
+      <div className="min-h-screen bg-black flex items-center justify-center text-cyan-400">
+        <p className="animate-pulse">Cargando...</p>
       </div>
     )
   }
@@ -298,17 +186,12 @@ function MobilePage() {
   // LOGIN SCREEN
   // =========================
   if (!session) {
-
     return (
-      <div className="min-h-screen bg-black text-white flex flex-col items-center justify-center gap-4">
+      <div className="min-h-screen bg-black flex flex-col items-center justify-center gap-4 text-white">
 
         <h1 className="text-4xl font-black">
           MKARAOKE 🎤
         </h1>
-
-        <p className="text-zinc-400">
-          Conéctate para entrar a la arena
-        </p>
 
         <button
           onClick={handleLogin}
@@ -325,14 +208,9 @@ function MobilePage() {
   // PROFILE LOADING
   // =========================
   if (!appReady) {
-
     return (
       <div className="min-h-screen bg-black flex items-center justify-center text-cyan-400">
-
-        <p className="animate-pulse">
-          Cargando perfil...
-        </p>
-
+        <p className="animate-pulse">Preparando perfil...</p>
       </div>
     )
   }
@@ -341,7 +219,6 @@ function MobilePage() {
   // MAIN APP
   // =========================
   return (
-
     <div className="min-h-screen bg-black text-white pb-24 relative">
 
       {/* LOGOUT */}
@@ -352,38 +229,26 @@ function MobilePage() {
         Logout
       </button>
 
-      {/* USER */}
+      {/* WELCOME */}
       <div className="text-center pt-6 text-cyan-400 text-sm">
-
-        Bienvenido {user?.artist_name || "Artista"}
-
+        Bienvenido {user?.artist_name}
       </div>
 
       {/* TITLE */}
       <div className="text-center pt-4">
-
         <h1 className="text-4xl font-black">
-
-          M<span className="text-cyan-400">
-            KARAOKE
-          </span>
-
+          M<span className="text-cyan-400">KARAOKE</span>
         </h1>
-
       </div>
 
       {/* SEARCH */}
       <div className="px-4 mt-5">
-
         <input
           value={search}
-          onChange={(e) =>
-            handleSearch(e.target.value)
-          }
+          onChange={(e) => handleSearch(e.target.value)}
           placeholder="Buscar canción..."
           className="w-full px-4 py-4 rounded-xl bg-black/60 border border-cyan-500/20"
         />
-
       </div>
 
       {/* RESULTS */}
@@ -395,8 +260,7 @@ function MobilePage() {
           </p>
         )}
 
-        {results.map((song) => (
-
+        {results.map(song => (
           <div
             key={song.youtubeId}
             className="flex gap-3 p-3 bg-black/60 rounded-xl"
@@ -408,25 +272,15 @@ function MobilePage() {
             />
 
             <div className="flex-1">
-
-              <p className="font-bold text-sm">
-                {song.title}
-              </p>
-
-              <p className="text-xs text-zinc-400">
-                {song.artist}
-              </p>
-
+              <p className="font-bold text-sm">{song.title}</p>
+              <p className="text-xs text-zinc-400">{song.artist}</p>
             </div>
 
-            <button
-              className="px-4 py-2 bg-cyan-500 text-black rounded-lg"
-            >
+            <button className="px-4 py-2 bg-cyan-500 text-black rounded-lg">
               +
             </button>
 
           </div>
-
         ))}
 
       </div>

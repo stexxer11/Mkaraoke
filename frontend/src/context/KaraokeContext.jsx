@@ -6,126 +6,82 @@ import {
 } from "react"
 
 import { supabase } from "../lib/supabase"
-
-import {
-  loginWithGoogle,
-  logout
-} from "../services/auth"
-
-import {
-  createUserProfile,
-  getUserProfile
-} from "../services/users"
+import { loginWithGoogle, logout } from "../services/auth"
+import { getUserProfile } from "../services/users"
 
 const KaraokeContext = createContext()
 
 export function KaraokeProvider({ children }) {
 
-  const [session, setSession] = useState(undefined)
+  const [session, setSession] = useState(null)
   const [user, setUser] = useState(null)
   const [loading, setLoading] = useState(true)
 
   // =========================
-  // GET OR CREATE USER
-  // =========================
-  const ensureUser = async (authUser) => {
-
-    const userId = authUser.id
-
-    console.log("CHECKING USER:", userId)
-
-    let profile = await getUserProfile(userId)
-
-    console.log("PROFILE FOUND:", profile)
-
-    if (!profile) {
-
-      console.log("CREATING MISSING PROFILE")
-
-      const { data, error } = await supabase
-        .from("users")
-        .insert({
-          id: userId,
-          email: authUser.email,
-          artist_name: null
-        })
-        .select()
-        .single()
-
-      if (error) {
-        console.error("CREATE USER ERROR:", error)
-        return null
-      }
-
-      profile = data
-    }
-
-    setUser(profile)
-  }
-
-  // =========================
-  // INIT SESSION
+  // INIT
   // =========================
   useEffect(() => {
 
-    async function initialize() {
+    const init = async () => {
 
       const { data } = await supabase.auth.getSession()
-
       const session = data.session
 
       setSession(session)
 
       if (session?.user?.id) {
-        await ensureUser(session.user)
+
+        const profile = await getUserProfile(session.user.id)
+
+        setUser(profile) // puede ser null
+
       }
 
-      setLoading(false) // 🔥 ESTE TE FALTABA
+      setLoading(false)
     }
 
-    initialize()
+    init()
 
-    // =========================
-    // AUTH LISTENER
-    // =========================
-    const {
-      data: listener
-    } = supabase.auth.onAuthStateChange(
-      async (_, newSession) => {
+    const { data: listener } =
+      supabase.auth.onAuthStateChange(
+        async (_, newSession) => {
 
-        setSession(newSession)
+          setSession(newSession)
 
-        if (newSession?.user?.id) {
-          await ensureUser(newSession.user)
-        } else {
-          setUser(null)
+          if (newSession?.user?.id) {
+
+            const profile = await getUserProfile(
+              newSession.user.id
+            )
+
+            setUser(profile)
+
+          } else {
+
+            setUser(null)
+
+          }
         }
+      )
 
-        setLoading(false)
-      }
-    )
-
-    return () => {
-      listener.subscription.unsubscribe()
-    }
+    return () => listener.subscription.unsubscribe()
 
   }, [])
 
   // =========================
-  // REGISTER USER (NOMBRE ARTÍSTICO)
+  // SET ARTIST NAME
   // =========================
-  async function registerUser(artistName) {
+  async function setArtistName(name) {
 
-    if (!session?.user) {
-      throw new Error("No session user")
-    }
+    if (!session?.user?.id) return
 
     const { data, error } = await supabase
       .from("users")
-      .update({
-        artist_name: artistName
+      .upsert({
+        id: session.user.id,
+        email: session.user.email,
+        artist_name: name
       })
-      .eq("id", session.user.id)
       .select()
       .single()
 
@@ -136,20 +92,17 @@ export function KaraokeProvider({ children }) {
     return data
   }
 
-  // =========================
-  // CONTEXT VALUE
-  // =========================
-  const value = {
-    session,
-    user,
-    loading,
-    loginWithGoogle,
-    logout,
-    registerUser
-  }
-
   return (
-    <KaraokeContext.Provider value={value}>
+    <KaraokeContext.Provider
+      value={{
+        session,
+        user,
+        loading,
+        loginWithGoogle,
+        logout,
+        setArtistName
+      }}
+    >
       {children}
     </KaraokeContext.Provider>
   )
