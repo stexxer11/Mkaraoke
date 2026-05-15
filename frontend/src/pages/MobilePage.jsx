@@ -17,19 +17,19 @@ function MobilePage() {
     queue,
     addSong,
     editSong,
+    cancelSong,
     currentSong,
 
+    session,
     user,
     registerUser,
-
-    isAuth,
-    isReady,
+    loginWithGoogle,
   } = useKaraoke()
 
   // =========================
-  // SAFE USER
+  // USER
   // =========================
-  const userId = user?.id || null
+  const userId = user?.id
 
   // =========================
   // STATE
@@ -56,12 +56,27 @@ function MobilePage() {
   }
 
   // =========================
-  // LOADING GUARD (IMPORTANTE)
+  // LOGIN GATE (🔥 FIX REAL)
   // =========================
-  if (!isReady) {
+  if (!session) {
     return (
-      <div className="min-h-screen bg-black text-white flex items-center justify-center">
-        Cargando...
+      <div className="min-h-screen bg-black text-white flex flex-col items-center justify-center gap-4">
+
+        <h1 className="text-4xl font-black">
+          MKARAOKE 🎤
+        </h1>
+
+        <p className="text-zinc-400">
+          Inicia sesión para continuar
+        </p>
+
+        <button
+          onClick={loginWithGoogle}
+          className="px-6 py-3 bg-cyan-500 text-black rounded-xl font-bold"
+        >
+          Login con Google
+        </button>
+
       </div>
     )
   }
@@ -71,9 +86,11 @@ function MobilePage() {
   // =========================
   useEffect(() => {
 
-    if (!user?.id) return
+    if (!session?.user?.id) return
+    if (!user) return
 
     const hasName = user.artist_name || user.artistName
+
     if (hasName) return
 
     if (alertShown.current) return
@@ -111,7 +128,7 @@ function MobilePage() {
       }
     })
 
-  }, [user])
+  }, [session, user])
 
   // =========================
   // KARAOKE FILTER
@@ -178,8 +195,6 @@ function MobilePage() {
   // SONG ACTIONS
   // =========================
   const handleAddSong = async (song) => {
-
-    if (!userId) return
 
     if (queue.length >= RULES.MAX_GLOBAL_QUEUE) return
 
