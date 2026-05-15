@@ -53,14 +53,14 @@ export function KaraokeProvider({ children }) {
     const init = async () => {
       setAppState("BOOTING")
 
-      const {
-        data: { session }
-      } = await supabase.auth.getSession()
+      const { data } = await supabase.auth.getSession()
+      const session = data?.session || null
 
-      setSession(session || null)
+      setSession(session)
       setAppState("CHECK_SESSION")
 
       if (!session?.user) {
+        setUser(null)
         setAppState("AUTH")
         return
       }
@@ -103,6 +103,32 @@ export function KaraokeProvider({ children }) {
 
     return () => listener.subscription.unsubscribe()
   }, [])
+
+  // =========================
+  // 🔥 LOGIN GOOGLE
+  // =========================
+  const loginWithGoogle = async () => {
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: {
+        redirectTo: window.location.origin
+      }
+    })
+
+    if (error) {
+      console.error("Google login error:", error)
+    }
+  }
+
+  // =========================
+  // LOGOUT
+  // =========================
+  const logout = async () => {
+    await supabase.auth.signOut()
+    setSession(null)
+    setUser(null)
+    setAppState("AUTH")
+  }
 
   // =========================
   // REGISTER USER
@@ -164,11 +190,13 @@ export function KaraokeProvider({ children }) {
 
       session,
       user,
+
       registerUser,
+      loginWithGoogle,
+      logout,
 
       queue: safeQueue,
       currentSong,
-
       setQueue,
 
       addSong,

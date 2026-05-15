@@ -2,10 +2,11 @@ import {
   useState,
   useEffect,
   useRef,
+  useMemo,
 } from "react"
 
-import Swal from "sweetalert2"
 import debounce from "lodash.debounce"
+import Swal from "sweetalert2"
 
 import { useKaraoke } from "../context/KaraokeContext"
 import { searchYouTube } from "../services/youtubeApi"
@@ -13,165 +14,301 @@ import { searchYouTube } from "../services/youtubeApi"
 function MobilePage() {
 
   const {
+    queue,
+    addSong,
+    editSong,
+    cancelSong,
+    currentSong,
+
     session,
     user,
-    isAuth,
-    isProfile,
-    isReady,
-
-    queue = [],
-
     registerUser,
-    addSong,
+    loginWithGoogle,
   } = useKaraoke()
 
   // =========================
-  // SAFE STATE
+  // USER
   // =========================
-  const safeQueue = Array.isArray(queue) ? queue : []
+  const userId = user?.id
 
   // =========================
-  // LOCAL STATE
+  // STATE
   // =========================
   const [search, setSearch] = useState("")
   const [results, setResults] = useState([])
   const [loading, setLoading] = useState(false)
 
-  const modalShown = useRef(false)
+  const [editMode, setEditMode] = useState(false)
+  const [editSongData, setEditSongData] = useState(null)
+
+  const alertOpen = useRef(null)
+  const lastSearch = useRef(0)
+  const alertShown = useRef(false)
 
   // =========================
-  // PROFILE MODAL (FIXED)
+  // RULES
+  // =========================
+  const RULES = {
+    MIN_SEARCH_LENGTH: 3,
+    MAX_QUEUE_PER_USER: 1,
+    MAX_GLOBAL_QUEUE: 50,
+    SEARCH_COOLDOWN_MS: 1500,
+  }
+
+  // =========================
+  // LOGIN GATE (🔥 FIX REAL)
+  // =========================
+  if (!session) {
+    return (
+      <div className="min-h-screen bg-black text-white flex flex-col items-center justify-center gap-4">
+
+        <h1 className="text-4xl font-black">
+          MKARAOKE 🎤
+        </h1>
+
+        <p className="text-zinc-400">
+          Inicia sesión para continuar
+        </p>
+
+        <button
+          onClick={loginWithGoogle}
+          className="px-6 py-3 bg-cyan-500 text-black rounded-xl font-bold"
+        >
+          Login con Google
+        </button>
+
+      </div>
+    )
+  }
+
+  // =========================
+  // PROFILE CHECK
   // =========================
   useEffect(() => {
 
-    if (!isProfile) return
-    if (modalShown.current) return
+    if (!session?.user?.id) return
+    if (!user) return
 
-    modalShown.current = true
+    const hasName = user.artist_name || user.artistName
+
+    if (hasName) return
+
+    if (alertShown.current) return
+    alertShown.current = true
 
     Swal.fire({
       title: "Bienvenido 🎤",
-      text: "Crea tu nombre artístico",
+      text: "Crea tu nombre de artista",
       input: "text",
+      inputPlaceholder: "Ej: DJ Rolando",
+
       background: "#000",
       color: "#06b6d4",
+
       allowOutsideClick: false,
-      confirmButtonText: "Crear",
+      allowEscapeKey: false,
+
+      confirmButtonText: "Guardar",
 
       preConfirm: async (value) => {
-        const name = value?.trim()
+        const artistName = value?.trim()
 
-        if (!name) {
+        if (!artistName) {
           Swal.showValidationMessage("Nombre inválido")
           return false
         }
 
-        await registerUser(name)
+        try {
+          await registerUser(artistName)
+          return true
+        } catch (e) {
+          Swal.showValidationMessage("Error creando usuario")
+          return false
+        }
       }
     })
 
-  }, [isProfile, registerUser])
+  }, [session, user])
 
   // =========================
-  // DEBOUNCE (STABLE - NO RECREA)
+  // KARAOKE FILTER
   // =========================
-  const debounceRef = useRef(
+  const isKaraokeQuery = (text) => {
+    const keywords = [
+      "karaoke",
+      "instrumental",
+      "lyrics",
+      "letra",
+      "cover",
+      "backing track"
+    ]
+
+    return keywords.some(k =>
+      text.toLowerCase().includes(k)
+    )
+  }
+
+  const forceKaraokeQuery = (text) =>
+    isKaraokeQuery(text)
+      ? text
+      : `${text} karaoke instrumental lyrics`
+
+  // =========================
+  // SEARCH
+  // =========================
+  const debouncedSearch = useMemo(() =>
     debounce(async (value) => {
 
-      if (!value || value.length < 3) {
+      if (!value || value.trim().length < RULES.MIN_SEARCH_LENGTH) {
         setResults([])
         return
       }
 
+      if (Date.now() - lastSearch.current < RULES.SEARCH_COOLDOWN_MS) return
+
+      lastSearch.current = Date.now()
+
       setLoading(true)
 
       try {
-        const res = await searchYouTube(value)
-        setResults(res || [])
-      } catch {
+        const data = await searchYouTube(forceKaraokeQuery(value))
+        setResults(data || [])
+      } catch (error) {
         setResults([])
       } finally {
         setLoading(false)
       }
 
-    }, 500)
-  )
+    }, 600)
+  , [])
+
+  useEffect(() => {
+    return () => debouncedSearch.cancel()
+  }, [debouncedSearch])
 
   const handleSearch = (value) => {
     setSearch(value)
-    debounceRef.current(value)
+    debouncedSearch(value)
   }
 
   // =========================
-  // ADD SONG SAFE
+  // SONG ACTIONS
   // =========================
   const handleAddSong = async (song) => {
+
+    if (queue.length >= RULES.MAX_GLOBAL_QUEUE) return
+
+    const mySongs = queue.filter(
+      s =>
+        s.owner_id === userId &&
+        s.status !== "done" &&
+        s.status !== "cancelled"
+    )
+
+    if (mySongs.length >= RULES.MAX_QUEUE_PER_USER) {
+      return Swal.fire({
+        icon: "warning",
+        title: "Límite alcanzado",
+        text: "Solo puedes tener 1 canción en cola",
+        background: "#000",
+        color: "#06b6d4"
+      })
+    }
+
     await addSong(song)
+
+    setSearch("")
+    setResults([])
+  }
+
+  const handleReplaceSong = async (song) => {
+
+    if (!editSongData) return
+    if (currentSong?.id === editSongData.id) return
+
+    await editSong(editSongData.id, song)
+
+    setEditMode(false)
+    setEditSongData(null)
+
     setSearch("")
     setResults([])
   }
 
   // =========================
-  // LOADING STATES (CLEAN)
+  // USER SONGS
   // =========================
-  if (isAuth) {
-    return (
-      <div className="min-h-screen bg-black text-white flex items-center justify-center">
-        Iniciando sesión...
-      </div>
+  const mySongs = useMemo(() =>
+    queue.filter(song =>
+      song.owner_id === userId &&
+      song.status !== "done" &&
+      song.status !== "cancelled"
     )
-  }
+  , [queue, userId])
 
-  if (isProfile) {
-    return (
-      <div className="min-h-screen bg-black text-white flex items-center justify-center">
-        Preparando perfil...
-      </div>
-    )
-  }
+  const myActiveSong = useMemo(() =>
+    mySongs[0] || null
+  , [mySongs])
 
-  if (!isReady) {
-    return (
-      <div className="min-h-screen bg-black text-white flex items-center justify-center">
-        Cargando sistema...
-      </div>
-    )
-  }
+  const isMySongPlaying =
+    currentSong?.id === myActiveSong?.id
+
+  // =========================
+  // ALERTS
+  // =========================
+  useEffect(() => {
+
+    if (!myActiveSong) return
+
+    const alertKey =
+      `${myActiveSong.id}-${currentSong?.id}`
+
+    if (alertOpen.current === alertKey) return
+
+    alertOpen.current = alertKey
+
+    Swal.fire({
+      title: isMySongPlaying ? "Disfruta 🎤" : "Tu turno 🎤",
+      html: `<b>${myActiveSong.title}</b>`,
+      background: "#000",
+      color: "#06b6d4",
+      showConfirmButton: false,
+      timer: 2500
+    })
+
+  }, [queue, currentSong, myActiveSong, isMySongPlaying])
 
   // =========================
   // UI
   // =========================
   return (
-    <div className="min-h-screen bg-black text-white pb-24">
+    <div className="min-h-screen bg-black text-white relative pb-24 overflow-y-auto">
 
-      <div className="text-center pt-4 text-sm text-zinc-400">
-        Bienvenido, {user?.artist_name}
+      <div className="text-center pt-4 text-zinc-400 text-sm">
+        Bienvenido, {user?.artist_name || "Artista"}
       </div>
 
-      <h1 className="text-center text-4xl font-black mt-3">
-        M<span className="text-cyan-400">KARAOKE</span>
-      </h1>
+      <div className="text-center pt-4">
+        <h1 className="text-4xl font-black">
+          M<span className="text-cyan-400">KARAOKE</span>
+        </h1>
+      </div>
 
-      <div className="px-4 mt-6">
+      <div className="px-4 mt-5">
         <input
           value={search}
           onChange={(e) => handleSearch(e.target.value)}
-          className="w-full p-4 bg-black border border-cyan-500 rounded-xl"
           placeholder="Buscar canción..."
+          className="w-full px-4 py-4 rounded-xl bg-black/60 border border-cyan-500/20"
         />
       </div>
 
-      <div className="px-4 mt-4 space-y-3">
+      <div className="px-4 mt-5 space-y-3">
 
-        {loading && (
-          <p className="text-zinc-400">Buscando...</p>
-        )}
+        {loading && <p className="text-zinc-400">Buscando...</p>}
 
         {results.map(song => (
-          <div
-            key={song.youtubeId}
-            className="flex gap-3 p-3 bg-black/60 rounded-xl"
-          >
+          <div key={song.youtubeId} className="flex gap-3 p-3 bg-black/60 rounded-xl">
 
             <img
               src={`https://img.youtube.com/vi/${song.youtubeId}/hqdefault.jpg`}
@@ -184,8 +321,12 @@ function MobilePage() {
             </div>
 
             <button
-              onClick={() => handleAddSong(song)}
               className="px-4 py-2 bg-cyan-500 text-black rounded-lg"
+              onClick={() =>
+                editMode
+                  ? handleReplaceSong(song)
+                  : handleAddSong(song)
+              }
             >
               +
             </button>
@@ -195,8 +336,8 @@ function MobilePage() {
 
       </div>
 
-      <div className="fixed bottom-0 w-full bg-black text-center py-3 border-t border-zinc-800">
-        Cola: {safeQueue.length}
+      <div className="fixed bottom-0 w-full bg-black/90 text-center py-3 text-zinc-500 border-t border-zinc-800">
+        Cola global: {queue.length}
       </div>
 
     </div>
