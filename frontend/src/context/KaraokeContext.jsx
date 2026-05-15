@@ -171,7 +171,7 @@ export const KaraokeProvider = ({ children }) => {
     }
   }, [])
 
-  // =========================
+  // ========================
   // CONTEXT VALUE
   // =========================
   return (
