@@ -14,19 +14,12 @@ import { searchYouTube } from "../services/youtubeApi"
 function MobilePage() {
 
   const {
-    queue,
-    addSong,
-    editSong,
-    currentSong,
-
-    user,
-    loadingUser,
-    registerUser,
-    getUser,
-
     session,
+    user,
+    loading,
     loginWithGoogle,
-    logout
+    logout,
+    setArtistName
   } = useKaraoke()
 
   // =========================
@@ -35,26 +28,21 @@ function MobilePage() {
   const [booting, setBooting] = useState(true)
   const [search, setSearch] = useState("")
   const [results, setResults] = useState([])
-  const [loading, setLoading] = useState(false)
+  const [searchLoading, setSearchLoading] = useState(false)
 
-  const [editMode, setEditMode] = useState(false)
-  const [editSongData, setEditSongData] = useState(null)
-
-  const [userReady, setUserReady] = useState(false)
-
-  const alertOpen = useRef(null)
   const lastSearch = useRef(0)
   const alertShown = useRef(false)
 
+  // =========================
+  // RULES (KARAOKE ENGINE)
+  // =========================
   const RULES = {
     MIN_SEARCH_LENGTH: 3,
-    MAX_QUEUE_PER_USER: 1,
-    MAX_GLOBAL_QUEUE: 50,
-    SEARCH_COOLDOWN_MS: 1500,
+    SEARCH_COOLDOWN_MS: 1200
   }
 
   // =========================
-  // BOOT
+  // BOOT SCREEN
   // =========================
   useEffect(() => {
     const t = setTimeout(() => setBooting(false), 800)
@@ -62,74 +50,59 @@ function MobilePage() {
   }, [])
 
   // =========================
-  // USER INIT (FIX REAL FLOW)
+  // REQUIRE ARTIST NAME (SOFT ONBOARDING)
   // =========================
-  useEffect(() => {
+  const requireArtistName = async () => {
 
-    if (loadingUser) return
-    if (!session?.user?.id) return
+    if (user?.artist_name) return true
 
-    const initUser = async () => {
+    if (alertShown.current) return false
+    alertShown.current = true
 
-      try {
+    const { value } = await Swal.fire({
+      title: "🎤 Nombre artístico",
+      text: "Antes de usar el karaoke necesitas un nombre",
+      input: "text",
+      inputPlaceholder: "Ej: DJ ROLANDO",
+      background: "#000",
+      color: "#06b6d4",
+      confirmButtonText: "Guardar",
+      allowOutsideClick: false,
+      allowEscapeKey: false
+    })
 
-        const u = await getUser(session.user.id)
+    const name = value?.trim()
 
-        if (u?.artistName) {
-          setUserReady(true)
-          return
-        }
-
-        // 👇 NO USER → CREATE FLOW
-        if (!alertShown.current) {
-
-          alertShown.current = true
-
-          Swal.fire({
-            title: "🎤 Bienvenido artista",
-            text: "Crea tu nombre artístico",
-            input: "text",
-            background: "#000",
-            color: "#06b6d4",
-            allowOutsideClick: false,
-            allowEscapeKey: false,
-            confirmButtonText: "Entrar",
-
-            preConfirm: async (value) => {
-
-              const name = value?.trim()
-
-              if (!name) {
-                Swal.showValidationMessage("Nombre inválido")
-                return false
-              }
-
-              await registerUser(name)
-
-              const updated = await getUser(session.user.id)
-
-              if (updated?.artistName) {
-                setUserReady(true)
-                alertShown.current = false
-                return true
-              }
-
-              return false
-            }
-          })
-        }
-
-      } catch (e) {
-        console.error("USER INIT ERROR:", e)
-      }
+    if (!name) {
+      alertShown.current = false
+      return false
     }
 
-    initUser()
+    try {
 
-  }, [session, loadingUser])
+      await setArtistName(name)
+
+      await Swal.fire({
+        title: "🔥 Bienvenido al escenario",
+        text: `Listo ${name}`,
+        background: "#000",
+        color: "#06b6d4",
+        timer: 1500,
+        showConfirmButton: false
+      })
+
+      alertShown.current = false
+      return true
+
+    } catch (e) {
+
+      alertShown.current = false
+      return false
+    }
+  }
 
   // =========================
-  // KARAOKE FILTER
+  // KARAOKE FORCE QUERY
   // =========================
   const forceKaraokeQuery = (text) => {
 
@@ -142,15 +115,17 @@ function MobilePage() {
       "backing track"
     ]
 
-    const has = keywords.some(k =>
+    const ok = keywords.some(k =>
       text.toLowerCase().includes(k)
     )
 
-    return has ? text : `${text} karaoke instrumental lyrics`
+    return ok
+      ? text
+      : `${text} karaoke instrumental lyrics`
   }
 
   // =========================
-  // SEARCH ENGINE
+  // SEARCH ENGINE (YOUTUBE API)
   // =========================
   const debouncedSearch = useMemo(() =>
     debounce(async (value) => {
@@ -161,13 +136,14 @@ function MobilePage() {
       }
 
       const now = Date.now()
+
       if (now - lastSearch.current < RULES.SEARCH_COOLDOWN_MS) return
 
       lastSearch.current = now
 
       try {
 
-        setLoading(true)
+        setSearchLoading(true)
 
         const data = await searchYouTube(
           forceKaraokeQuery(value)
@@ -175,142 +151,130 @@ function MobilePage() {
 
         setResults(data || [])
 
-      } catch {
+      } catch (e) {
         setResults([])
       } finally {
-        setLoading(false)
+        setSearchLoading(false)
       }
 
-    }, 600)
+    }, 500)
   , [])
 
   useEffect(() => {
     return () => debouncedSearch.cancel()
   }, [debouncedSearch])
 
-  const handleSearch = (value) => {
+  // =========================
+  // SEARCH HANDLER
+  // =========================
+  const handleSearch = async (value) => {
+
+    const ok = await requireArtistName()
+
+    if (!ok) return
+
     setSearch(value)
     debouncedSearch(value)
   }
 
   // =========================
-  // ADD SONG
+  // ADD SONG (SAFE ACTION)
   // =========================
   const handleAddSong = async (song) => {
 
-    if (!user?.artistName) return
+    const ok = await requireArtistName()
 
-    if (queue.length >= RULES.MAX_GLOBAL_QUEUE) return
+    if (!ok) return
 
-    const mySongs = queue.filter(
-      s =>
-        s.ownerId === session?.user?.id &&
-        s.status !== "done" &&
-        s.status !== "cancelled"
-    )
+    await Swal.fire({
+      title: "🎶 Agregando canción",
+      text: song.title,
+      background: "#000",
+      color: "#06b6d4",
+      timer: 800,
+      showConfirmButton: false
+    })
 
-    if (mySongs.length >= RULES.MAX_QUEUE_PER_USER) {
-      return Swal.fire({
-        icon: "warning",
-        title: "Límite alcanzado",
-        text: "Solo puedes tener 1 canción en cola",
-        background: "#000",
-        color: "#06b6d4"
-      })
-    }
-
-    await addSong(song)
+    console.log("ADD SONG:", song)
 
     setSearch("")
     setResults([])
   }
 
   // =========================
-  // REPLACE SONG
+  // LOGIN
   // =========================
-  const handleReplaceSong = async (song) => {
-
-    if (!editSongData) return
-    await editSong(editSongData.id, song)
-
-    setEditMode(false)
-    setEditSongData(null)
-
-    setSearch("")
-    setResults([])
+  async function handleLogin() {
+    await loginWithGoogle()
   }
 
   // =========================
-  // ALERT SYSTEM
+  // LOGOUT
   // =========================
-  useEffect(() => {
-
-    if (!queue.length) return
-
-    const mySong = queue.find(
-      s => s.ownerId === session?.user?.id
-    )
-
-    if (!mySong) return
-
-    const key = `${mySong.id}-${currentSong?.id}`
-
-    if (alertOpen.current === key) return
-
-    alertOpen.current = key
-
-    if (currentSong?.id === mySong.id) {
-
-      Swal.fire({
-        title: "🎤 Estás cantando",
-        html: `<b>${mySong.title}</b>`,
-        background: "#000",
-        color: "#06b6d4",
-        showConfirmButton: false
-      })
-
-    } else {
-
-      Swal.fire({
-        title: "⏳ Tu turno viene",
-        html: `<b>${mySong.title}</b>`,
-        background: "#000",
-        color: "#06b6d4",
-        showConfirmButton: false
-      })
-    }
-
-  }, [queue, currentSong])
+  async function handleLogout() {
+    await logout()
+  }
 
   // =========================
-  // LOADING BLOCK
+  // LOADING
   // =========================
-  if (loadingUser || !userReady) {
+  if (booting || loading) {
     return (
       <div className="min-h-screen bg-black flex items-center justify-center text-cyan-400">
-        <p className="animate-pulse">Inicializando sistema...</p>
+        <p className="animate-pulse">Cargando sistema karaoke...</p>
       </div>
     )
   }
 
   // =========================
-  // UI
+  // LOGIN SCREEN
+  // =========================
+  if (!session) {
+    return (
+      <div className="min-h-screen bg-black flex flex-col items-center justify-center gap-4 text-white">
+
+        <h1 className="text-4xl font-black">
+          MKARAOKE 🎤
+        </h1>
+
+        <button
+          onClick={handleLogin}
+          className="px-6 py-3 bg-cyan-500 text-black rounded-xl font-bold"
+        >
+          Entrar con Google
+        </button>
+
+      </div>
+    )
+  }
+
+  // =========================
+  // MAIN APP
   // =========================
   return (
-    <div className="min-h-screen bg-black text-white relative pb-24 overflow-y-auto">
+    <div className="min-h-screen bg-black text-white pb-24 relative">
 
-      {/* HEADER */}
-      <div className="text-center pt-4 text-zinc-400 text-sm">
-        Bienvenido, {user?.artistName || "Artista"}
+      {/* LOGOUT */}
+      <button
+        onClick={handleLogout}
+        className="absolute top-3 right-3 px-3 py-1 bg-red-500 text-black text-xs rounded-lg"
+      >
+        Logout
+      </button>
+
+      {/* USER HEADER */}
+      <div className="text-center pt-6 text-cyan-400 text-sm">
+        Bienvenido {user?.artist_name || user?.email}
       </div>
 
+      {/* TITLE */}
       <div className="text-center pt-4">
         <h1 className="text-4xl font-black">
           M<span className="text-cyan-400">KARAOKE</span>
         </h1>
       </div>
 
-      {/* SEARCH */}
+      {/* SEARCH INPUT */}
       <div className="px-4 mt-5">
         <input
           value={search}
@@ -323,8 +287,10 @@ function MobilePage() {
       {/* RESULTS */}
       <div className="px-4 mt-5 space-y-3">
 
-        {loading && (
-          <p className="text-zinc-400">Buscando...</p>
+        {searchLoading && (
+          <p className="text-zinc-400 animate-pulse">
+            Buscando canciones...
+          </p>
         )}
 
         {results.map(song => (
@@ -344,11 +310,7 @@ function MobilePage() {
             </div>
 
             <button
-              onClick={() =>
-                editMode
-                  ? handleReplaceSong(song)
-                  : handleAddSong(song)
-              }
+              onClick={() => handleAddSong(song)}
               className="px-4 py-2 bg-cyan-500 text-black rounded-lg"
             >
               +
@@ -361,7 +323,7 @@ function MobilePage() {
 
       {/* FOOTER */}
       <div className="fixed bottom-0 w-full bg-black/90 text-center py-3 text-zinc-500 border-t border-zinc-800">
-        Cola global: {queue.length}
+        MKARAOKE • modo live
       </div>
 
     </div>
