@@ -76,7 +76,7 @@ function MobilePage() {
   console.log("USER:", user)
 
   // usuario listo
-  if (user?.artist_name) {
+ if (user?.artist_name && user.artist_name.length > 0){
 
     console.log("APP READY")
 

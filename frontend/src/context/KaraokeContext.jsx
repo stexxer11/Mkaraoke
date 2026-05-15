@@ -22,10 +22,46 @@ const KaraokeContext = createContext()
 export function KaraokeProvider({ children }) {
 
   const [session, setSession] = useState(undefined)
-
   const [user, setUser] = useState(null)
-
   const [loading, setLoading] = useState(true)
+
+  // =========================
+  // GET OR CREATE USER
+  // =========================
+  const ensureUser = async (authUser) => {
+
+    const userId = authUser.id
+
+    console.log("CHECKING USER:", userId)
+
+    let profile = await getUserProfile(userId)
+
+    console.log("PROFILE FOUND:", profile)
+
+    if (!profile) {
+
+      console.log("CREATING MISSING PROFILE")
+
+      const { data, error } = await supabase
+        .from("users")
+        .insert({
+          id: userId,
+          email: authUser.email,
+          artist_name: null
+        })
+        .select()
+        .single()
+
+      if (error) {
+        console.error("CREATE USER ERROR:", error)
+        return null
+      }
+
+      profile = data
+    }
+
+    setUser(profile)
+  }
 
   // =========================
   // INIT SESSION
@@ -34,34 +70,17 @@ export function KaraokeProvider({ children }) {
 
     async function initialize() {
 
-      try {
+      const { data } = await supabase.auth.getSession()
 
-        const {
-          data
-        } = await supabase.auth.getSession()
+      const session = data.session
 
-        const currentSession = data.session
+      setSession(session)
 
-        setSession(currentSession)
-
-        if (currentSession?.user?.id) {
-
-          const profile = await getUserProfile(
-            currentSession.user.id
-          )
-
-          setUser(profile)
-        }
-
-      } catch (e) {
-
-        console.error("Session init error:", e)
-
-      } finally {
-
-        setLoading(false)
-
+      if (session?.user?.id) {
+        await ensureUser(session.user)
       }
+
+      setLoading(false) // 🔥 ESTE TE FALTABA
     }
 
     initialize()
@@ -77,18 +96,12 @@ export function KaraokeProvider({ children }) {
         setSession(newSession)
 
         if (newSession?.user?.id) {
-
-          const profile = await getUserProfile(
-            newSession.user.id
-          )
-
-          setUser(profile)
-
+          await ensureUser(newSession.user)
         } else {
-
           setUser(null)
-
         }
+
+        setLoading(false)
       }
     )
 
@@ -99,36 +112,37 @@ export function KaraokeProvider({ children }) {
   }, [])
 
   // =========================
-  // REGISTER USER
+  // REGISTER USER (NOMBRE ARTÍSTICO)
   // =========================
-async function registerUser(artistName) {
+  async function registerUser(artistName) {
 
-  if (!session?.user) {
-    throw new Error("No session user")
+    if (!session?.user) {
+      throw new Error("No session user")
+    }
+
+    const { data, error } = await supabase
+      .from("users")
+      .update({
+        artist_name: artistName
+      })
+      .eq("id", session.user.id)
+      .select()
+      .single()
+
+    if (error) throw error
+
+    setUser(data)
+
+    return data
   }
-
-  const profile = await createUserProfile(
-    session.user,
-    artistName
-  )
-
-  console.log("PROFILE CREATED:", profile)
-
-  // FORZAR USER LOCAL
-  setUser(profile)
-
-  return profile
-}
 
   // =========================
   // CONTEXT VALUE
   // =========================
   const value = {
-
     session,
     user,
     loading,
-
     loginWithGoogle,
     logout,
     registerUser
