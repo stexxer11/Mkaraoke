@@ -202,3 +202,59 @@ async def cancel_song(song_id: str):
 
     except Exception as e:
         raise HTTPException(500, str(e))
+
+        # =====================================================
+# GET USER
+# =====================================================
+
+@app.get("/user/{user_id}")
+async def get_user(user_id: str):
+
+    try:
+
+        res = supabase.table("users") \
+            .select("*") \
+            .eq("id", user_id) \
+            .limit(1) \
+            .execute()
+
+        if not res.data:
+            return {}
+
+        return res.data[0]
+
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+# =====================================================
+# CREATE USER
+# =====================================================
+
+@app.post("/user")
+async def create_user(data: dict):
+
+    try:
+
+        # evitar duplicados
+        existing = supabase.table("users") \
+            .select("id") \
+            .eq("id", data["id"]) \
+            .limit(1) \
+            .execute()
+
+        if existing.data:
+            return {"ok": True}
+
+        res = supabase.table("users").insert({
+            "id": data["id"],
+            "artist_name": data["artist_name"]
+        }).execute()
+
+        return {
+            "ok": True,
+            "data": res.data
+        }
+
+    except Exception as e:
+        raise HTTPException(500, str(e))
