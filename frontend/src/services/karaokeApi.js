@@ -6,7 +6,6 @@ import api from "./api"
 const safeRequest = async (request, name) => {
   try {
     const response = await request
-
     const data = response?.data ?? response
 
     if (!data) {
@@ -14,7 +13,6 @@ const safeRequest = async (request, name) => {
     }
 
     return data
-
   } catch (error) {
     const status = error?.response?.status
 
@@ -30,11 +28,14 @@ const safeRequest = async (request, name) => {
   }
 }
 
+//
 // =========================
-// QUEUE
+// QUEUE API
 // =========================
-export const getQueue = () =>
-  safeRequest(api.get("/queue"), "GET_QUEUE")
+//
+
+export const getQueueApi = () =>
+  safeRequest(api.get("/queue?select=*&order=created_at.asc"), "GET_QUEUE")
 
 export const addSongApi = (song) =>
   safeRequest(
@@ -69,38 +70,41 @@ export const playNowApi = (id) =>
 export const removeSongApi = (id) =>
   safeRequest(api.delete(`/queue/hard/${id}`), "REMOVE_SONG")
 
+//
 // =========================
-// USERS
+// PROFILES API (ÚNICO USUARIO SYSTEM)
 // =========================
-export const getUserApi = async (userId) => {
+//
+
+export const getProfileApi = async (userId) => {
   const data = await safeRequest(
-    api.get(`/user/${userId}`),
-    "GET_USER"
+    api.get(`/profiles?id=eq.${userId}`),
+    "GET_PROFILE"
   )
 
-  return normalizeUser(data)
+  // Supabase devuelve array
+  return data?.[0] ?? null
 }
 
-export const createUserApi = async (data) => {
+export const createProfileApi = async (data) => {
   const res = await safeRequest(
-    api.post("/user", {
+    api.post("/profiles", {
       id: data.id,
-      artist_name: data.artistName
+      artist_name: data.artistName,
     }),
-    "CREATE_USER"
+    "CREATE_PROFILE"
   )
 
-  return normalizeUser(res)
+  return res?.[0] ?? res
 }
 
-// =========================
-// NORMALIZER
-// =========================
-const normalizeUser = (user) => {
-  if (!user) return null
+export const updateProfileApi = async (id, data) => {
+  const res = await safeRequest(
+    api.patch(`/profiles?id=eq.${id}`, {
+      artist_name: data.artistName,
+    }),
+    "UPDATE_PROFILE"
+  )
 
-  return {
-    id: user.id,
-    artist_name: user.artist_name ?? user.artistName ?? null,
-  }
+  return res?.[0] ?? res
 }
