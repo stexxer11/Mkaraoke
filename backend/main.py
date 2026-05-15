@@ -236,7 +236,7 @@ async def create_user(data: dict):
 
     try:
 
-        # evitar duplicados
+        # evitar duplicado
         existing = supabase.table("users") \
             .select("id") \
             .eq("id", data["id"]) \
