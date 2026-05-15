@@ -18,26 +18,31 @@ export function KaraokeProvider({ children }) {
   const [loading, setLoading] = useState(true)
 
   // =========================
-  // INIT
+  // INIT SESSION
   // =========================
   useEffect(() => {
 
-    const init = async () => {
+    async function init() {
 
-      const { data } = await supabase.auth.getSession()
-      const session = data.session
+      try {
 
-      setSession(session)
+        const { data } = await supabase.auth.getSession()
+        const session = data.session
 
-      if (session?.user?.id) {
+        setSession(session)
 
-        const profile = await getUserProfile(session.user.id)
+        if (session?.user?.id) {
 
-        setUser(profile) // puede ser null
+          const profile = await getUserProfile(session.user.id)
 
+          setUser(profile || null)
+        }
+
+      } catch (e) {
+        console.error("INIT ERROR:", e)
+      } finally {
+        setLoading(false)
       }
-
-      setLoading(false)
     }
 
     init()
@@ -54,13 +59,12 @@ export function KaraokeProvider({ children }) {
               newSession.user.id
             )
 
-            setUser(profile)
+            setUser(profile || null)
 
           } else {
-
             setUser(null)
-
           }
+
         }
       )
 
@@ -93,16 +97,14 @@ export function KaraokeProvider({ children }) {
   }
 
   return (
-    <KaraokeContext.Provider
-      value={{
-        session,
-        user,
-        loading,
-        loginWithGoogle,
-        logout,
-        setArtistName
-      }}
-    >
+    <KaraokeContext.Provider value={{
+      session,
+      user,
+      loading,
+      loginWithGoogle,
+      logout,
+      setArtistName
+    }}>
       {children}
     </KaraokeContext.Provider>
   )

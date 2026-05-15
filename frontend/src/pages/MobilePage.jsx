@@ -2,10 +2,11 @@ import {
   useState,
   useEffect,
   useRef,
-  useMemo,
+  useMemo
 } from "react"
 
 import debounce from "lodash.debounce"
+import Swal from "sweetalert2"
 
 import { useKaraoke } from "../context/KaraokeContext"
 import { searchYouTube } from "../services/youtubeApi"
@@ -30,7 +31,7 @@ function MobilePage() {
 
   const RULES = {
     MIN_SEARCH_LENGTH: 3,
-    SEARCH_COOLDOWN_MS: 1200,
+    SEARCH_COOLDOWN_MS: 1200
   }
 
   // =========================
@@ -40,6 +41,31 @@ function MobilePage() {
     const t = setTimeout(() => setBooting(false), 800)
     return () => clearTimeout(t)
   }, [])
+
+  // =========================
+  // REQUIRE ARTIST NAME (ON DEMAND)
+  // =========================
+  const requireArtistName = async () => {
+
+    if (user?.artist_name) return true
+
+    const { value } = await Swal.fire({
+      title: "🎤 Nombre artístico",
+      text: "Necesitas un nombre para continuar",
+      input: "text",
+      confirmButtonText: "Guardar",
+      allowOutsideClick: false,
+      allowEscapeKey: false
+    })
+
+    const name = value?.trim()
+
+    if (!name) return false
+
+    await setArtistName(name)
+
+    return true
+  }
 
   // =========================
   // SEARCH
@@ -67,20 +93,34 @@ function MobilePage() {
         setResults(data || [])
 
       } catch (e) {
-
         setResults([])
-
       } finally {
-
         setSearchLoading(false)
       }
 
     }, 400)
   , [])
 
-  const handleSearch = (value) => {
+  const handleSearch = async (value) => {
+
+    const ok = await requireArtistName()
+
+    if (!ok) return
+
     setSearch(value)
     debouncedSearch(value)
+  }
+
+  // =========================
+  // ADD SONG
+  // =========================
+  const handleAddSong = async (song) => {
+
+    const ok = await requireArtistName()
+
+    if (!ok) return
+
+    console.log("ADD SONG:", song)
   }
 
   // =========================
@@ -98,7 +138,7 @@ function MobilePage() {
   }
 
   // =========================
-  // BOOT
+  // BOOT SCREEN
   // =========================
   if (booting || loading) {
     return (
@@ -109,7 +149,7 @@ function MobilePage() {
   }
 
   // =========================
-  // LOGIN
+  // LOGIN SCREEN
   // =========================
   if (!session) {
     return (
@@ -131,7 +171,7 @@ function MobilePage() {
   }
 
   // =========================
-  // MAIN APP (SIEMPRE ENTRA AQUÍ)
+  // MAIN APP
   // =========================
   return (
     <div className="min-h-screen bg-black text-white pb-24 relative">
