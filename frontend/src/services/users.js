@@ -1,30 +1,37 @@
 import { supabase } from "../lib/supabase"
 
 export async function createUserProfile(authUser, artistName = null) {
-
   if (!authUser?.id) {
     throw new Error("Missing auth user")
   }
 
   const payload = {
     id: authUser.id,
-    email: authUser.email,
+    email: authUser.email ?? null,
     artist_name: artistName || authUser.user_metadata?.name || null,
     avatar_url: authUser.user_metadata?.avatar_url || null
   }
 
-  console.log("UPSERT PROFILE:", payload)
-
   const { data, error } = await supabase
     .from("users")
-    .upsert(payload)
+    .upsert(payload, { onConflict: "id" })
     .select()
     .single()
 
-  if (error) {
-    console.error("UPSERT ERROR:", error)
-    throw error
-  }
+  if (error) throw error
+
+  return data
+}
+
+// 👇 ESTE ES EL QUE TE FALTA
+export async function getUserProfile(userId) {
+  const { data, error } = await supabase
+    .from("users")
+    .select("*")
+    .eq("id", userId)
+    .single()
+
+  if (error) return null
 
   return data
 }
