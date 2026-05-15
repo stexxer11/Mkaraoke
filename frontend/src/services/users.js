@@ -1,6 +1,9 @@
 import { supabase } from "../lib/supabase"
 
-export async function createUserProfile(user, artistName) {
+export async function createUserProfile(
+  user,
+  artistName
+) {
 
   const payload = {
     id: user.id,
@@ -15,13 +18,15 @@ export async function createUserProfile(user, artistName) {
     .from("users")
     .upsert(payload)
     .select()
-    .single()
+
+  console.log("UPSERT DATA:", data)
+  console.log("UPSERT ERROR:", error)
 
   if (error) {
     throw error
   }
 
-  return data
+  return data?.[0]
 }
 
 export async function getUserProfile(userId) {
@@ -33,11 +38,11 @@ export async function getUserProfile(userId) {
     .from("users")
     .select("*")
     .eq("id", userId)
-    .single()
 
   if (error) {
+    console.error(error)
     return null
   }
 
-  return data
+  return data?.[0]
 }
