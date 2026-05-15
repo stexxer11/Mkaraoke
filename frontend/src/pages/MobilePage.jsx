@@ -22,23 +22,25 @@ function MobilePage() {
     user,
     registerUser,
     loginWithGoogle,
-    logout,
   } = useKaraoke()
 
   // =========================
-  // FLOW STATES (GAME STYLE)
+  // LOADING STATES (CLASH ROYALE STYLE FLOW)
   // =========================
   const [booting, setBooting] = useState(true)
-  const [checkingUser, setCheckingUser] = useState(true)
   const [authLoading, setAuthLoading] = useState(false)
-  const [profileReady, setProfileReady] = useState(false)
+  const [profileLoading, setProfileLoading] = useState(false)
 
   const [search, setSearch] = useState("")
   const [results, setResults] = useState([])
   const [loading, setLoading] = useState(false)
 
-  const alertShown = useRef(false)
+  const [editMode, setEditMode] = useState(false)
+  const [editSongData, setEditSongData] = useState(null)
+
+  const alertOpen = useRef(null)
   const lastSearch = useRef(0)
+  const alertShown = useRef(false)
 
   const RULES = {
     MIN_SEARCH_LENGTH: 3,
@@ -48,69 +50,91 @@ function MobilePage() {
   }
 
   // =========================
-  // BOOT (CLASH ROYALE INTRO)
+  // BOOT SEQUENCE (CLASH ROYALE LOADING SCREEN)
   // =========================
   useEffect(() => {
     const t = setTimeout(() => {
       setBooting(false)
-    }, 1500)
+    }, 1800) // fake loading like game intro
 
     return () => clearTimeout(t)
   }, [])
 
   // =========================
-  // USER CHECK (ONBOARDING FLOW)
+  // PROFILE CHECK (NEW USER FLOW)
   // =========================
   useEffect(() => {
     if (!session?.user?.id) return
+    if (!user) return
 
-    const hasName = user?.artist_name || user?.artistName
+    const hasName = user.artist_name || user.artistName
 
-    // usuario ya existe → entra directo
     if (hasName) {
-      setCheckingUser(false)
-      setProfileReady(true)
+      setProfileLoading(false)
       return
     }
 
-    // usuario nuevo → onboarding
     if (alertShown.current) return
     alertShown.current = true
 
     Swal.fire({
       title: "🎤 Bienvenido a MKARAOKE",
-      text: "Crea tu nombre artístico",
+      text: "Eres un nuevo artista, crea tu nombre",
       input: "text",
-      inputPlaceholder: "Ej: MX23",
+      inputPlaceholder: "Ej: DJ Rolando",
       background: "#000",
       color: "#06b6d4",
       allowOutsideClick: false,
       allowEscapeKey: false,
-      confirmButtonText: "Entrar",
+      confirmButtonText: "Entrar a la arena",
 
       preConfirm: async (value) => {
-        const name = value?.trim()
+        const artistName = value?.trim()
 
-        if (!name) {
+        if (!artistName) {
           Swal.showValidationMessage("Nombre inválido")
           return false
         }
 
-        await registerUser(name)
-        setCheckingUser(false)
-        setProfileReady(true)
-        return true
+        setProfileLoading(true)
+
+        try {
+          await registerUser(artistName)
+          setProfileLoading(false)
+          return true
+        } catch (e) {
+          setProfileLoading(false)
+          Swal.showValidationMessage("Error creando usuario")
+          return false
+        }
       }
     })
   }, [session, user])
 
   // =========================
-  // SEARCH
+  // KARAOKE SEARCH HELPERS
   // =========================
+  const isKaraokeQuery = (text) => {
+    const keywords = [
+      "karaoke",
+      "instrumental",
+      "lyrics",
+      "letra",
+      "cover",
+      "backing track"
+    ]
+    return keywords.some(k => text.toLowerCase().includes(k))
+  }
+
+  const forceKaraokeQuery = (text) =>
+    isKaraokeQuery(text)
+      ? text
+      : `${text} karaoke instrumental lyrics`
+
   const debouncedSearch = useMemo(() =>
     debounce(async (value) => {
 
-      if (!value || value.length < RULES.MIN_SEARCH_LENGTH) {
+      if (!value || value.trim().length < RULES.MIN_SEARCH_LENGTH) {
         setResults([])
         return
       }
@@ -121,7 +145,7 @@ function MobilePage() {
       setLoading(true)
 
       try {
-        const data = await searchYouTube(value + " karaoke")
+        const data = await searchYouTube(forceKaraokeQuery(value))
         setResults(data || [])
       } catch {
         setResults([])
@@ -129,7 +153,7 @@ function MobilePage() {
         setLoading(false)
       }
 
-    }, 500)
+    }, 600)
   , [])
 
   const handleSearch = (value) => {
@@ -138,24 +162,51 @@ function MobilePage() {
   }
 
   // =========================
-  // ADD SONG
+  // SONG ACTIONS
   // =========================
   const handleAddSong = async (song) => {
+    if (queue.length >= RULES.MAX_GLOBAL_QUEUE) return
+
+    const mySongs = queue.filter(
+      s => s.owner_id === user?.id &&
+        s.status !== "done" &&
+        s.status !== "cancelled"
+    )
+
+    if (mySongs.length >= RULES.MAX_QUEUE_PER_USER) {
+      return Swal.fire({
+        icon: "warning",
+        title: "Límite alcanzado",
+        text: "Solo puedes tener 1 canción en cola",
+        background: "#000",
+        color: "#06b6d4"
+      })
+    }
+
     await addSong(song)
     setSearch("")
     setResults([])
   }
 
   // =========================
-  // BOOT SCREEN
+  // LOADING SCREEN (CLASH ROYALE STYLE)
   // =========================
-  if (booting || checkingUser) {
+  if (booting || authLoading || profileLoading) {
     return (
       <div className="min-h-screen bg-black flex flex-col items-center justify-center text-cyan-400">
-        <h1 className="text-3xl font-black animate-pulse">MKARAOKE</h1>
-        <p className="mt-2 text-zinc-400 animate-bounce">
+
+        <div className="text-4xl font-black animate-pulse">
+          MKARAOKE
+        </div>
+
+        <p className="mt-4 text-zinc-400 animate-bounce">
           Entrando a la arena...
         </p>
+
+        <div className="mt-6 w-32 h-1 bg-cyan-500/30 overflow-hidden rounded">
+          <div className="h-full w-1/2 bg-cyan-400 animate-pulse"></div>
+        </div>
+
       </div>
     )
   }
@@ -165,12 +216,12 @@ function MobilePage() {
   // =========================
   if (!session) {
     return (
-      <div className="min-h-screen bg-black flex flex-col items-center justify-center text-white gap-4">
+      <div className="min-h-screen bg-black text-white flex flex-col items-center justify-center gap-4">
 
         <h1 className="text-4xl font-black">MKARAOKE 🎤</h1>
 
         <p className="text-zinc-400">
-          Conéctate para entrar
+          Conéctate para entrar a la arena
         </p>
 
         <button
@@ -192,23 +243,10 @@ function MobilePage() {
   // MAIN APP
   // =========================
   return (
-    <div className="min-h-screen bg-black text-white pb-24 relative">
+    <div className="min-h-screen bg-black text-white relative pb-24 overflow-y-auto">
 
-      {/* LOGOUT */}
-      <button
-        onClick={async () => {
-          await logout()
-          setProfileReady(false)
-          alertShown.current = false
-        }}
-        className="absolute top-3 right-3 px-3 py-1 bg-red-500 text-black text-xs rounded-lg"
-      >
-        Logout
-      </button>
-
-      {/* WELCOME HEADER */}
       <div className="text-center pt-4 text-zinc-400 text-sm">
-        Bienvenido {user?.artist_name || "Artista"}
+        Bienvenido, {user?.artist_name || "Artista"}
       </div>
 
       <div className="text-center pt-4">
@@ -217,7 +255,6 @@ function MobilePage() {
         </h1>
       </div>
 
-      {/* SEARCH */}
       <div className="px-4 mt-5">
         <input
           value={search}
@@ -227,12 +264,11 @@ function MobilePage() {
         />
       </div>
 
-      {/* RESULTS */}
       <div className="px-4 mt-5 space-y-3">
 
         {loading && (
           <p className="text-zinc-400 animate-pulse">
-            Buscando...
+            Buscando en la arena...
           </p>
         )}
 
@@ -250,8 +286,8 @@ function MobilePage() {
             </div>
 
             <button
-              onClick={() => handleAddSong(song)}
               className="px-4 py-2 bg-cyan-500 text-black rounded-lg"
+              onClick={() => handleAddSong(song)}
             >
               +
             </button>
@@ -261,7 +297,6 @@ function MobilePage() {
 
       </div>
 
-      {/* FOOTER */}
       <div className="fixed bottom-0 w-full bg-black/90 text-center py-3 text-zinc-500 border-t border-zinc-800">
         Cola global: {queue.length}
       </div>
