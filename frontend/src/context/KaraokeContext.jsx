@@ -24,7 +24,7 @@ const KaraokeContext = createContext()
 export function KaraokeProvider({ children }) {
 
   // =========================
-  // STATE MACHINE
+  // STATE
   // =========================
   const [appState, setAppState] = useState("BOOTING")
   const [session, setSession] = useState(null)
@@ -41,82 +41,175 @@ export function KaraokeProvider({ children }) {
   )
 
   const currentSong = useMemo(
-    () => safeQueue.find(s => s?.status === "playing") || null,
+    () =>
+      safeQueue.find(
+        (song) => song?.status === "playing"
+      ) || null,
     [safeQueue]
   )
+
+  // =========================
+  // SAFE PROFILE FETCH
+  // =========================
+  const loadUserProfile = async (userId) => {
+
+    try {
+
+      const profile = await getUserApi(userId)
+
+      if (profile?.id && profile?.artist_name) {
+
+        setUser(profile)
+        setAppState("READY")
+
+        return profile
+      }
+
+      setUser(null)
+      setAppState("PROFILE")
+
+      return null
+
+    } catch (error) {
+
+      console.error("LOAD USER ERROR:", error)
+
+      // evita crash infinito
+      setUser(null)
+      setAppState("PROFILE")
+
+      return null
+    }
+  }
 
   // =========================
   // INIT AUTH
   // =========================
   useEffect(() => {
 
+    let mounted = true
+
     const init = async () => {
-      setAppState("BOOTING")
 
-      const { data } = await supabase.auth.getSession()
-      const session = data?.session || null
+      try {
 
-      setSession(session)
-      setAppState("CHECK_SESSION")
+        setAppState("BOOTING")
 
-      if (!session?.user) {
-        setUser(null)
-        setAppState("AUTH")
-        return
-      }
+        const { data, error } =
+          await supabase.auth.getSession()
 
-      const profile = await getUserApi(session.user.id)
+        if (error) {
+          console.error("SESSION ERROR:", error)
 
-      if (profile?.id && profile?.artist_name) {
-        setUser(profile)
-        setAppState("READY")
-      } else {
-        setUser(null)
-        setAppState("PROFILE")
-      }
-    }
+          if (mounted) {
+            setSession(null)
+            setUser(null)
+            setAppState("AUTH")
+          }
 
-    init()
+          return
+        }
 
-    const { data: listener } = supabase.auth.onAuthStateChange(
-      async (_event, session) => {
+        const currentSession = data?.session || null
 
-        setSession(session)
+        if (!mounted) return
 
-        if (!session?.user) {
+        setSession(currentSession)
+
+        if (!currentSession?.user?.id) {
           setUser(null)
           setAppState("AUTH")
           return
         }
 
-        const profile = await getUserApi(session.user.id)
+        await loadUserProfile(
+          currentSession.user.id
+        )
 
-        if (profile?.id && profile?.artist_name) {
-          setUser(profile)
-          setAppState("READY")
-        } else {
+      } catch (error) {
+
+        console.error("INIT ERROR:", error)
+
+        if (mounted) {
+          setSession(null)
+          setUser(null)
+          setAppState("AUTH")
+        }
+      }
+    }
+
+    init()
+
+    // =========================
+    // AUTH LISTENER
+    // =========================
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange(
+      async (_event, newSession) => {
+
+        try {
+
+          setSession(newSession)
+
+          if (!newSession?.user?.id) {
+            setUser(null)
+            setAppState("AUTH")
+            return
+          }
+
+          await loadUserProfile(
+            newSession.user.id
+          )
+
+        } catch (error) {
+
+          console.error(
+            "AUTH STATE ERROR:",
+            error
+          )
+
           setUser(null)
           setAppState("PROFILE")
         }
       }
     )
 
-    return () => listener.subscription.unsubscribe()
+    return () => {
+      mounted = false
+      subscription.unsubscribe()
+    }
+
   }, [])
 
   // =========================
-  // 🔥 LOGIN GOOGLE
+  // LOGIN GOOGLE
   // =========================
   const loginWithGoogle = async () => {
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: "google",
-      options: {
-        redirectTo: window.location.origin
-      }
-    })
 
-    if (error) {
-      console.error("Google login error:", error)
+    try {
+
+      const { error } =
+        await supabase.auth.signInWithOAuth({
+          provider: "google",
+          options: {
+            redirectTo: `${window.location.origin}/`
+          },
+        })
+
+      if (error) {
+        console.error(
+          "GOOGLE LOGIN ERROR:",
+          error
+        )
+      }
+
+    } catch (error) {
+
+      console.error(
+        "LOGIN CRASH:",
+        error
+      )
     }
   }
 
@@ -124,10 +217,24 @@ export function KaraokeProvider({ children }) {
   // LOGOUT
   // =========================
   const logout = async () => {
-    await supabase.auth.signOut()
-    setSession(null)
-    setUser(null)
-    setAppState("AUTH")
+
+    try {
+
+      await supabase.auth.signOut()
+
+    } catch (error) {
+
+      console.error(
+        "LOGOUT ERROR:",
+        error
+      )
+
+    } finally {
+
+      setSession(null)
+      setUser(null)
+      setAppState("AUTH")
+    }
   }
 
   // =========================
@@ -135,26 +242,46 @@ export function KaraokeProvider({ children }) {
   // =========================
   const registerUser = async (artistName) => {
 
-    const clean = artistName?.trim()
-    if (!clean || !session?.user?.id) return null
+    try {
 
-    await createUserApi({
-      id: session.user.id,
-      artistName: clean
-    })
+      const clean = artistName?.trim()
 
-    const profile = await getUserApi(session.user.id)
+      if (!clean) {
+        throw new Error("INVALID_ARTIST_NAME")
+      }
 
-    setUser(profile)
-    setAppState("READY")
+      if (!session?.user?.id) {
+        throw new Error("NO_SESSION")
+      }
 
-    return profile
+      await createUserApi({
+        id: session.user.id,
+        artistName: clean,
+      })
+
+      const profile =
+        await loadUserProfile(
+          session.user.id
+        )
+
+      return profile
+
+    } catch (error) {
+
+      console.error(
+        "REGISTER USER ERROR:",
+        error
+      )
+
+      throw error
+    }
   }
 
   // =========================
   // ACTIONS
   // =========================
   const addSong = async (song) => {
+
     return addSongApi({
       ownerId: session?.user?.id,
       title: song?.title || "",
@@ -163,49 +290,66 @@ export function KaraokeProvider({ children }) {
     })
   }
 
-  const editSong = (id, data) => editSongApi(id, data)
-  const cancelSong = (id) => cancelSongApi(id)
-  const playNextSong = () => nextSongApi()
-  const playNow = (id) => playNowApi(id)
-  const removeSongById = (id) => removeSongApi(id)
+  const editSong = (id, data) =>
+    editSongApi(id, data)
+
+  const cancelSong = (id) =>
+    cancelSongApi(id)
+
+  const playNextSong = () =>
+    nextSongApi()
+
+  const playNow = (id) =>
+    playNowApi(id)
+
+  const removeSongById = (id) =>
+    removeSongApi(id)
 
   // =========================
   // FLAGS
   // =========================
-  const isBooting = appState === "BOOTING"
-  const isChecking = appState === "CHECK_SESSION"
-  const isAuth = appState === "AUTH"
-  const isProfile = appState === "PROFILE"
-  const isReady = appState === "READY"
+  const isBooting =
+    appState === "BOOTING"
+
+  const isAuth =
+    appState === "AUTH"
+
+  const isProfile =
+    appState === "PROFILE"
+
+  const isReady =
+    appState === "READY"
 
   return (
-    <KaraokeContext.Provider value={{
+    <KaraokeContext.Provider
+      value={{
 
-      appState,
-      isBooting,
-      isChecking,
-      isAuth,
-      isProfile,
-      isReady,
+        appState,
 
-      session,
-      user,
+        isBooting,
+        isAuth,
+        isProfile,
+        isReady,
 
-      registerUser,
-      loginWithGoogle,
-      logout,
+        session,
+        user,
 
-      queue: safeQueue,
-      currentSong,
-      setQueue,
+        registerUser,
+        loginWithGoogle,
+        logout,
 
-      addSong,
-      editSong,
-      cancelSong,
-      playNextSong,
-      playNow,
-      removeSongById,
-    }}>
+        queue: safeQueue,
+        currentSong,
+        setQueue,
+
+        addSong,
+        editSong,
+        cancelSong,
+        playNextSong,
+        playNow,
+        removeSongById,
+      }}
+    >
       {children}
     </KaraokeContext.Provider>
   )
