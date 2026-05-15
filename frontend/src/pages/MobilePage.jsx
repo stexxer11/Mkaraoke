@@ -22,25 +22,23 @@ function MobilePage() {
     user,
     registerUser,
     loginWithGoogle,
+    logout,
   } = useKaraoke()
 
   // =========================
-  // LOADING STATES (CLASH ROYALE STYLE FLOW)
+  // STATES
   // =========================
   const [booting, setBooting] = useState(true)
   const [authLoading, setAuthLoading] = useState(false)
   const [profileLoading, setProfileLoading] = useState(false)
+  const [appReady, setAppReady] = useState(false)
 
   const [search, setSearch] = useState("")
   const [results, setResults] = useState([])
   const [loading, setLoading] = useState(false)
 
-  const [editMode, setEditMode] = useState(false)
-  const [editSongData, setEditSongData] = useState(null)
-
-  const alertOpen = useRef(null)
-  const lastSearch = useRef(0)
   const alertShown = useRef(false)
+  const lastSearch = useRef(0)
 
   const RULES = {
     MIN_SEARCH_LENGTH: 3,
@@ -50,18 +48,18 @@ function MobilePage() {
   }
 
   // =========================
-  // BOOT SEQUENCE (CLASH ROYALE LOADING SCREEN)
+  // BOOT (CLASH ROYALE STYLE)
   // =========================
   useEffect(() => {
     const t = setTimeout(() => {
       setBooting(false)
-    }, 1800) // fake loading like game intro
+    }, 1500)
 
     return () => clearTimeout(t)
   }, [])
 
   // =========================
-  // PROFILE CHECK (NEW USER FLOW)
+  // PROFILE CHECK (NEW / EXISTING USER)
   // =========================
   useEffect(() => {
     if (!session?.user?.id) return
@@ -69,29 +67,32 @@ function MobilePage() {
 
     const hasName = user.artist_name || user.artistName
 
+    // 👇 usuario existente → entra directo
     if (hasName) {
       setProfileLoading(false)
+      setAppReady(true)
       return
     }
 
+    // 👇 usuario nuevo → onboarding
     if (alertShown.current) return
     alertShown.current = true
 
     Swal.fire({
       title: "🎤 Bienvenido a MKARAOKE",
-      text: "Eres un nuevo artista, crea tu nombre",
+      text: "Crea tu nombre artístico",
       input: "text",
-      inputPlaceholder: "Ej: DJ Rolando",
+      inputPlaceholder: "Ej: MX23",
       background: "#000",
       color: "#06b6d4",
       allowOutsideClick: false,
       allowEscapeKey: false,
-      confirmButtonText: "Entrar a la arena",
+      confirmButtonText: "Entrar",
 
       preConfirm: async (value) => {
-        const artistName = value?.trim()
+        const name = value?.trim()
 
-        if (!artistName) {
+        if (!name) {
           Swal.showValidationMessage("Nombre inválido")
           return false
         }
@@ -99,8 +100,9 @@ function MobilePage() {
         setProfileLoading(true)
 
         try {
-          await registerUser(artistName)
+          await registerUser(name)
           setProfileLoading(false)
+          setAppReady(true)
           return true
         } catch (e) {
           setProfileLoading(false)
@@ -112,25 +114,8 @@ function MobilePage() {
   }, [session, user])
 
   // =========================
-  // KARAOKE SEARCH HELPERS
+  // SEARCH
   // =========================
-  const isKaraokeQuery = (text) => {
-    const keywords = [
-      "karaoke",
-      "instrumental",
-      "lyrics",
-      "letra",
-      "cover",
-      "backing track"
-    ]
-    return keywords.some(k => text.toLowerCase().includes(k))
-  }
-
-  const forceKaraokeQuery = (text) =>
-    isKaraokeQuery(text)
-      ? text
-      : `${text} karaoke instrumental lyrics`
-
   const debouncedSearch = useMemo(() =>
     debounce(async (value) => {
 
@@ -145,7 +130,7 @@ function MobilePage() {
       setLoading(true)
 
       try {
-        const data = await searchYouTube(forceKaraokeQuery(value))
+        const data = await searchYouTube(value + " karaoke")
         setResults(data || [])
       } catch {
         setResults([])
@@ -153,7 +138,7 @@ function MobilePage() {
         setLoading(false)
       }
 
-    }, 600)
+    }, 500)
   , [])
 
   const handleSearch = (value) => {
@@ -162,13 +147,14 @@ function MobilePage() {
   }
 
   // =========================
-  // SONG ACTIONS
+  // ADD SONG
   // =========================
   const handleAddSong = async (song) => {
     if (queue.length >= RULES.MAX_GLOBAL_QUEUE) return
 
     const mySongs = queue.filter(
-      s => s.owner_id === user?.id &&
+      s =>
+        s.owner_id === user?.id &&
         s.status !== "done" &&
         s.status !== "cancelled"
     )
@@ -189,7 +175,7 @@ function MobilePage() {
   }
 
   // =========================
-  // LOADING SCREEN (CLASH ROYALE STYLE)
+  // BOOT SCREEN
   // =========================
   if (booting || authLoading || profileLoading) {
     return (
@@ -240,69 +226,88 @@ function MobilePage() {
   }
 
   // =========================
-  // MAIN APP
+  // APP READY (MAIN GAME SCREEN)
   // =========================
-  return (
-    <div className="min-h-screen bg-black text-white relative pb-24 overflow-y-auto">
+  if (appReady) {
+    return (
+      <div className="min-h-screen bg-black text-white pb-24 relative">
 
-      <div className="text-center pt-4 text-zinc-400 text-sm">
-        Bienvenido, {user?.artist_name || "Artista"}
-      </div>
+        {/* LOGOUT */}
+        <button
+          onClick={async () => {
+            await logout()
+            window.location.reload()
+          }}
+          className="absolute top-3 right-3 px-3 py-1 bg-red-500 text-black text-xs rounded-lg"
+        >
+          Logout
+        </button>
 
-      <div className="text-center pt-4">
-        <h1 className="text-4xl font-black">
-          M<span className="text-cyan-400">KARAOKE</span>
-        </h1>
-      </div>
+        {/* WELCOME */}
+        <div className="text-center pt-6 text-cyan-400 text-sm">
+          Bienvenido {user?.artist_name || "Artista"}
+        </div>
 
-      <div className="px-4 mt-5">
-        <input
-          value={search}
-          onChange={(e) => handleSearch(e.target.value)}
-          placeholder="Buscar canción..."
-          className="w-full px-4 py-4 rounded-xl bg-black/60 border border-cyan-500/20"
-        />
-      </div>
+        <div className="text-center pt-4">
+          <h1 className="text-4xl font-black">
+            M<span className="text-cyan-400">KARAOKE</span>
+          </h1>
+        </div>
 
-      <div className="px-4 mt-5 space-y-3">
+        {/* SEARCH */}
+        <div className="px-4 mt-5">
+          <input
+            value={search}
+            onChange={(e) => handleSearch(e.target.value)}
+            placeholder="Buscar canción..."
+            className="w-full px-4 py-4 rounded-xl bg-black/60 border border-cyan-500/20"
+          />
+        </div>
 
-        {loading && (
-          <p className="text-zinc-400 animate-pulse">
-            Buscando en la arena...
-          </p>
-        )}
+        {/* RESULTS */}
+        <div className="px-4 mt-5 space-y-3">
 
-        {results.map(song => (
-          <div key={song.youtubeId} className="flex gap-3 p-3 bg-black/60 rounded-xl">
+          {loading && (
+            <p className="text-zinc-400 animate-pulse">
+              Buscando...
+            </p>
+          )}
 
-            <img
-              src={`https://img.youtube.com/vi/${song.youtubeId}/hqdefault.jpg`}
-              className="w-14 h-14 rounded-lg"
-            />
+          {results.map(song => (
+            <div key={song.youtubeId} className="flex gap-3 p-3 bg-black/60 rounded-xl">
 
-            <div className="flex-1">
-              <p className="font-bold text-sm">{song.title}</p>
-              <p className="text-xs text-zinc-400">{song.artist}</p>
+              <img
+                src={`https://img.youtube.com/vi/${song.youtubeId}/hqdefault.jpg`}
+                className="w-14 h-14 rounded-lg"
+              />
+
+              <div className="flex-1">
+                <p className="font-bold text-sm">{song.title}</p>
+                <p className="text-xs text-zinc-400">{song.artist}</p>
+              </div>
+
+              <button
+                onClick={() => handleAddSong(song)}
+                className="px-4 py-2 bg-cyan-500 text-black rounded-lg"
+              >
+                +
+              </button>
+
             </div>
+          ))}
 
-            <button
-              className="px-4 py-2 bg-cyan-500 text-black rounded-lg"
-              onClick={() => handleAddSong(song)}
-            >
-              +
-            </button>
+        </div>
 
-          </div>
-        ))}
+        {/* FOOTER */}
+        <div className="fixed bottom-0 w-full bg-black/90 text-center py-3 text-zinc-500 border-t border-zinc-800">
+          Cola global: {queue.length}
+        </div>
 
       </div>
+    )
+  }
 
-      <div className="fixed bottom-0 w-full bg-black/90 text-center py-3 text-zinc-500 border-t border-zinc-800">
-        Cola global: {queue.length}
-      </div>
-
-    </div>
-  )
+  return null
 }
 
 export default MobilePage
