@@ -1,17 +1,19 @@
 import api from "./api"
 
 // =========================
-// SAFE REQUEST
+// SAFE REQUEST (ROBUSTO)
 // =========================
 const safeRequest = async (request, name) => {
   try {
     const response = await request
 
-    if (!response?.data) {
+    const data = response?.data ?? response
+
+    if (!data) {
       throw new Error(`${name}: EMPTY_RESPONSE`)
     }
 
-    return response.data
+    return data
 
   } catch (error) {
     const status = error?.response?.status
@@ -35,10 +37,25 @@ export const getQueue = () =>
   safeRequest(api.get("/queue"), "GET_QUEUE")
 
 export const addSongApi = (song) =>
-  safeRequest(api.post("/queue/add", song), "ADD_SONG")
+  safeRequest(
+    api.post("/queue/add", {
+      owner_id: song.ownerId,
+      title: song.title,
+      artist: song.artist,
+      youtube_id: song.youtubeId,
+    }),
+    "ADD_SONG"
+  )
 
 export const editSongApi = (id, data) =>
-  safeRequest(api.put(`/queue/edit/${id}`, data), "EDIT_SONG")
+  safeRequest(
+    api.put(`/queue/edit/${id}`, {
+      title: data.title,
+      artist: data.artist,
+      youtube_id: data.youtubeId,
+    }),
+    "EDIT_SONG"
+  )
 
 export const cancelSongApi = (id) =>
   safeRequest(api.put(`/queue/cancel/${id}`), "CANCEL_SONG")
@@ -53,9 +70,8 @@ export const removeSongApi = (id) =>
   safeRequest(api.delete(`/queue/hard/${id}`), "REMOVE_SONG")
 
 // =========================
-// USERS (NORMALIZADO)
+// USERS
 // =========================
-
 export const getUserApi = async (userId) => {
   const data = await safeRequest(
     api.get(`/user/${userId}`),
@@ -67,7 +83,10 @@ export const getUserApi = async (userId) => {
 
 export const createUserApi = async (data) => {
   const res = await safeRequest(
-    api.post("/user", data),
+    api.post("/user", {
+      id: data.id,
+      artist_name: data.artistName
+    }),
     "CREATE_USER"
   )
 
@@ -75,7 +94,7 @@ export const createUserApi = async (data) => {
 }
 
 // =========================
-// NORMALIZER (🔥 CRÍTICO)
+// NORMALIZER
 // =========================
 const normalizeUser = (user) => {
   if (!user) return null
