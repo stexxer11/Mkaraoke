@@ -68,86 +68,93 @@ function MobilePage() {
   // =========================
   // PROFILE FLOW
   // =========================
-  useEffect(() => {
+ useEffect(() => {
 
-    if (!session?.user?.id) return
+  if (!session?.user?.id) return
 
-    // usuario ya existe
-    if (user?.artist_name) {
+  console.log("SESSION:", session)
+  console.log("USER:", user)
 
-      setAppReady(true)
+  // usuario listo
+  if (user?.artist_name) {
 
-      return
-    }
+    console.log("APP READY")
 
-    // evitar doble popup
-    if (alertShown.current) return
+    setAppReady(true)
 
-    alertShown.current = true
+    return
+  }
 
-    Swal.fire({
+  // evitar doble popup
+  if (alertShown.current) return
 
-      title: "🎤 Bienvenido a MKARAOKE",
+  alertShown.current = true
 
-      text: "Crea tu nombre artístico",
+  Swal.fire({
 
-      input: "text",
+    title: "🎤 Bienvenido a MKARAOKE",
 
-      inputPlaceholder: "Ej: MX23",
+    text: "Crea tu nombre artístico",
 
-      background: "#000",
+    input: "text",
 
-      color: "#06b6d4",
+    inputPlaceholder: "Ej: MX23",
 
-      allowOutsideClick: false,
+    background: "#000",
 
-      allowEscapeKey: false,
+    color: "#06b6d4",
 
-      confirmButtonText: "Entrar",
+    allowOutsideClick: false,
 
-      preConfirm: async (value) => {
+    allowEscapeKey: false,
 
-        const name = value?.trim()
+    confirmButtonText: "Entrar",
 
-        if (!name) {
+    preConfirm: async (value) => {
 
-          Swal.showValidationMessage(
-            "Nombre inválido"
-          )
+      const name = value?.trim()
 
-          return false
-        }
+      if (!name) {
 
-        try {
+        Swal.showValidationMessage(
+          "Nombre inválido"
+        )
 
-          setProfileLoading(true)
-
-          await registerUser(name)
-
-          setAppReady(true)
-
-          return true
-
-        } catch (e) {
-
-          console.error(e)
-
-          Swal.showValidationMessage(
-            "Error creando perfil"
-          )
-
-          return false
-
-        } finally {
-
-          setProfileLoading(false)
-
-        }
+        return false
       }
-    })
 
-  }, [session, user])
+      try {
 
+        setProfileLoading(true)
+
+        const profile = await registerUser(name)
+
+        console.log("REGISTERED:", profile)
+
+        // FORZAR APP READY
+        setAppReady(true)
+
+        return true
+
+      } catch (e) {
+
+        console.error("REGISTER ERROR:", e)
+
+        Swal.showValidationMessage(
+          e.message || "Error creando perfil"
+        )
+
+        return false
+
+      } finally {
+
+        setProfileLoading(false)
+
+      }
+    }
+  })
+
+}, [session, user])
   // =========================
   // SEARCH ENGINE
   // =========================

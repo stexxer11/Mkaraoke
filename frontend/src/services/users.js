@@ -1,48 +1,45 @@
 import { supabase } from "../lib/supabase"
 
 export async function createUserProfile(
-  user,
+  authUser,
   artistName
 ) {
 
   const payload = {
-    id: user.id,
-    email: user.email,
+    id: authUser.id,
+    email: authUser.email,
     artist_name: artistName
   }
 
-  const {
-    data,
-    error
-  } = await supabase
+  console.log("CREATING PROFILE:", payload)
+
+  const response = await supabase
     .from("users")
     .upsert(payload)
-    .select()
 
-  console.log("UPSERT DATA:", data)
-  console.log("UPSERT ERROR:", error)
+  console.log("UPSERT RESPONSE:", response)
 
-  if (error) {
-    throw error
+  if (response.error) {
+    throw response.error
   }
 
-  return data?.[0]
+  return payload
 }
 
 export async function getUserProfile(userId) {
 
-  const {
-    data,
-    error
-  } = await supabase
+  console.log("GET USER PROFILE:", userId)
+
+  const response = await supabase
     .from("users")
     .select("*")
     .eq("id", userId)
 
-  if (error) {
-    console.error(error)
-    return null
+  console.log("PROFILE RESPONSE:", response)
+
+  if (response.error) {
+    throw response.error
   }
 
-  return data?.[0]
+  return response.data?.[0] || null
 }

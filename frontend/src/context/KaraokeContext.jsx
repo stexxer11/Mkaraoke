@@ -101,21 +101,24 @@ export function KaraokeProvider({ children }) {
   // =========================
   // REGISTER USER
   // =========================
-  async function registerUser(artistName) {
+async function registerUser(artistName) {
 
-    if (!session?.user) {
-      throw new Error("No authenticated user")
-    }
-
-    const profile = await createUserProfile(
-      session.user,
-      artistName
-    )
-
-    setUser(profile)
-
-    return profile
+  if (!session?.user) {
+    throw new Error("No session user")
   }
+
+  const profile = await createUserProfile(
+    session.user,
+    artistName
+  )
+
+  console.log("PROFILE CREATED:", profile)
+
+  // FORZAR USER LOCAL
+  setUser(profile)
+
+  return profile
+}
 
   // =========================
   // CONTEXT VALUE
