@@ -22,21 +22,22 @@ function MobilePage() {
     user,
     registerUser,
     loginWithGoogle,
-    logout, // 👈 IMPORTANTE
+    logout,
   } = useKaraoke()
 
   // =========================
-  // APP STATES (FLOW CONTROL)
+  // FLOW STATES (GAME STYLE)
   // =========================
   const [booting, setBooting] = useState(true)
   const [checkingUser, setCheckingUser] = useState(true)
+  const [authLoading, setAuthLoading] = useState(false)
+  const [profileReady, setProfileReady] = useState(false)
 
   const [search, setSearch] = useState("")
   const [results, setResults] = useState([])
   const [loading, setLoading] = useState(false)
 
   const alertShown = useRef(false)
-  const alertOpen = useRef(null)
   const lastSearch = useRef(0)
 
   const RULES = {
@@ -50,23 +51,29 @@ function MobilePage() {
   // BOOT (CLASH ROYALE INTRO)
   // =========================
   useEffect(() => {
-    const t = setTimeout(() => setBooting(false), 1500)
+    const t = setTimeout(() => {
+      setBooting(false)
+    }, 1500)
+
     return () => clearTimeout(t)
   }, [])
 
   // =========================
-  // USER CHECK + ONBOARDING
+  // USER CHECK (ONBOARDING FLOW)
   // =========================
   useEffect(() => {
     if (!session?.user?.id) return
 
     const hasName = user?.artist_name || user?.artistName
 
+    // usuario ya existe → entra directo
     if (hasName) {
       setCheckingUser(false)
+      setProfileReady(true)
       return
     }
 
+    // usuario nuevo → onboarding
     if (alertShown.current) return
     alertShown.current = true
 
@@ -91,6 +98,7 @@ function MobilePage() {
 
         await registerUser(name)
         setCheckingUser(false)
+        setProfileReady(true)
         return true
       }
     })
@@ -139,13 +147,15 @@ function MobilePage() {
   }
 
   // =========================
-  // LOADING SCREEN
+  // BOOT SCREEN
   // =========================
   if (booting || checkingUser) {
     return (
       <div className="min-h-screen bg-black flex flex-col items-center justify-center text-cyan-400">
         <h1 className="text-3xl font-black animate-pulse">MKARAOKE</h1>
-        <p className="mt-2 text-zinc-400">Entrando a la arena...</p>
+        <p className="mt-2 text-zinc-400 animate-bounce">
+          Entrando a la arena...
+        </p>
       </div>
     )
   }
@@ -160,11 +170,15 @@ function MobilePage() {
         <h1 className="text-4xl font-black">MKARAOKE 🎤</h1>
 
         <p className="text-zinc-400">
-          Inicia sesión para entrar
+          Conéctate para entrar
         </p>
 
         <button
-          onClick={loginWithGoogle}
+          onClick={async () => {
+            setAuthLoading(true)
+            await loginWithGoogle()
+            setAuthLoading(false)
+          }}
           className="px-6 py-3 bg-cyan-500 text-black rounded-xl font-bold"
         >
           Login con Google
@@ -178,17 +192,13 @@ function MobilePage() {
   // MAIN APP
   // =========================
   return (
-    <div className="min-h-screen bg-black text-white pb-24">
-
-      {/* HEADER */}
-      <div className="text-center pt-4 text-zinc-400 text-sm">
-        Bienvenido {user?.artist_name || "Artista"}
-      </div>
+    <div className="min-h-screen bg-black text-white pb-24 relative">
 
       {/* LOGOUT */}
       <button
         onClick={async () => {
           await logout()
+          setProfileReady(false)
           alertShown.current = false
         }}
         className="absolute top-3 right-3 px-3 py-1 bg-red-500 text-black text-xs rounded-lg"
@@ -196,7 +206,11 @@ function MobilePage() {
         Logout
       </button>
 
-      {/* TITLE */}
+      {/* WELCOME HEADER */}
+      <div className="text-center pt-4 text-zinc-400 text-sm">
+        Bienvenido {user?.artist_name || "Artista"}
+      </div>
+
       <div className="text-center pt-4">
         <h1 className="text-4xl font-black">
           M<span className="text-cyan-400">KARAOKE</span>
