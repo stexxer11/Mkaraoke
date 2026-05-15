@@ -102,6 +102,7 @@ async def add_song(song: SongCreate):
         return {"ok": True, "id": song_id, "status": status}
 
     except Exception as e:
+        print("ADD SONG ERROR:", str(e))
         raise HTTPException(500, str(e))
 
 
@@ -131,6 +132,7 @@ async def next_song():
         return {"ok": True}
 
     except Exception as e:
+        print("NEXT SONG ERROR:", str(e))
         raise HTTPException(500, str(e))
 
 
@@ -150,6 +152,7 @@ async def edit_song(song_id: str, data: SongUpdate):
         return {"ok": True}
 
     except Exception as e:
+        print("EDIT SONG ERROR:", str(e))
         raise HTTPException(500, str(e))
 
 
@@ -167,10 +170,11 @@ async def cancel_song(song_id: str):
         return {"ok": True}
 
     except Exception as e:
+        print("CANCEL SONG ERROR:", str(e))
         raise HTTPException(500, str(e))
 
 # =========================
-# USER (FIX CLAVE)
+# USER (FIX DEFINITIVO)
 # =========================
 @app.get("/user/{user_id}")
 async def get_user(user_id: str):
@@ -181,19 +185,27 @@ async def get_user(user_id: str):
             .eq("id", user_id) \
             .execute()
 
-        # ✔ existe
-        if res.data:
+        # si existe usuario
+        if res.data and len(res.data) > 0:
             return res.data[0]
 
-        # 🔥 auto-create user si no existe
+        # crear usuario si no existe
         new_user = supabase.table("users").insert({
             "id": user_id,
             "artist_name": "Artista"
         }).execute()
 
-        return new_user.data[0]
+        # 🔥 FIX CRÍTICO: evitar crash si data viene vacío
+        if new_user.data and len(new_user.data) > 0:
+            return new_user.data[0]
+
+        return {
+            "id": user_id,
+            "artist_name": "Artista"
+        }
 
     except Exception as e:
+        print("USER ERROR:", str(e))
         raise HTTPException(500, str(e))
 
 
@@ -215,7 +227,11 @@ async def create_user(data: dict):
             "artist_name": data["artist_name"]
         }).execute()
 
-        return {"ok": True, "data": res.data}
+        return {
+            "ok": True,
+            "data": res.data[0] if res.data else None
+        }
 
     except Exception as e:
+        print("CREATE USER ERROR:", str(e))
         raise HTTPException(500, str(e))
