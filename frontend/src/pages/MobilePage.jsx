@@ -8,7 +8,6 @@ import {
 import debounce from "lodash.debounce"
 import Swal from "sweetalert2"
 
-import { supabase } from "../lib/supabase"
 import { useKaraoke } from "../context/KaraokeContext"
 import { searchYouTube } from "../services/youtubeApi"
 
@@ -20,7 +19,8 @@ function MobilePage() {
     loading,
     loginWithGoogle,
     logout,
-    setArtistName
+    setArtistName,
+    addSong
   } = useKaraoke()
 
   // =========================
@@ -48,13 +48,14 @@ function MobilePage() {
   }, [])
 
   // =========================
-  // REQUIRE ARTIST NAME (ONLY FOR ADD SONG)
+  // REQUIRE ARTIST NAME
   // =========================
   const requireArtistName = async () => {
 
     if (user?.artist_name) return true
 
     if (alertShown.current) return false
+
     alertShown.current = true
 
     const { value } = await Swal.fire({
@@ -77,6 +78,7 @@ function MobilePage() {
     }
 
     try {
+
       await setArtistName(name)
 
       await Swal.fire({
@@ -91,7 +93,10 @@ function MobilePage() {
       return true
 
     } catch (e) {
+
+      console.error(e)
       return false
+
     } finally {
       alertShown.current = false
     }
@@ -115,7 +120,9 @@ function MobilePage() {
       text.toLowerCase().includes(k)
     )
 
-    return ok ? text : `${text} karaoke instrumental lyrics`
+    return ok
+      ? text
+      : `${text} karaoke instrumental lyrics`
   }
 
   // =========================
@@ -131,11 +138,15 @@ function MobilePage() {
 
       const now = Date.now()
 
-      if (now - lastSearch.current < RULES.SEARCH_COOLDOWN_MS) return
+      if (
+        now - lastSearch.current <
+        RULES.SEARCH_COOLDOWN_MS
+      ) return
 
       lastSearch.current = now
 
       try {
+
         setSearchLoading(true)
 
         const data = await searchYouTube(
@@ -145,8 +156,12 @@ function MobilePage() {
         setResults(data || [])
 
       } catch (e) {
+
+        console.error(e)
         setResults([])
+
       } finally {
+
         setSearchLoading(false)
       }
 
@@ -158,7 +173,7 @@ function MobilePage() {
   }, [debouncedSearch])
 
   // =========================
-  // SEARCH (NO AUTH REQUIRED)
+  // SEARCH
   // =========================
   const handleSearch = (value) => {
     setSearch(value)
@@ -166,11 +181,12 @@ function MobilePage() {
   }
 
   // =========================
-  // ADD SONG (REQUIRES ARTIST NAME)
+  // ADD SONG
   // =========================
   const handleAddSong = async (song) => {
 
     const ok = await requireArtistName()
+
     if (!ok) return
 
     await Swal.fire({
@@ -184,18 +200,14 @@ function MobilePage() {
 
     try {
 
-      const { error } = await supabase
-        .from("songs")
-        .insert({
-          user_id: user.id,
-          youtube_id: song.youtubeId,
-          title: song.title,
-          artist: song.artist,
-          thumbnail: `https://img.youtube.com/vi/${song.youtubeId}/hqdefault.jpg`,
-          status: "queued"
-        })
-
-      if (error) throw error
+      await addSong({
+        youtubeId: song.youtubeId,
+        title: song.title,
+        artist: song.artist,
+        thumbnail:
+          song.thumbnail ||
+          `https://img.youtube.com/vi/${song.youtubeId}/hqdefault.jpg`
+      })
 
       setSearch("")
       setResults([])
@@ -210,6 +222,7 @@ function MobilePage() {
       })
 
     } catch (err) {
+
       console.error(err)
 
       Swal.fire({
@@ -233,7 +246,9 @@ function MobilePage() {
   if (booting || loading) {
     return (
       <div className="min-h-screen bg-black flex items-center justify-center text-cyan-400">
-        <p className="animate-pulse">Cargando sistema karaoke...</p>
+        <p className="animate-pulse">
+          Cargando sistema karaoke...
+        </p>
       </div>
     )
   }
@@ -245,7 +260,9 @@ function MobilePage() {
     return (
       <div className="min-h-screen bg-black flex flex-col items-center justify-center gap-4 text-white">
 
-        <h1 className="text-4xl font-black">MKARAOKE 🎤</h1>
+        <h1 className="text-4xl font-black">
+          MKARAOKE 🎤
+        </h1>
 
         <button
           onClick={handleLogin}
@@ -305,18 +322,26 @@ function MobilePage() {
           >
 
             <img
-              src={`https://img.youtube.com/vi/${song.youtubeId}/hqdefault.jpg`}
-              className="w-14 h-14 rounded-lg"
+              src={
+                song.thumbnail ||
+                `https://img.youtube.com/vi/${song.youtubeId}/hqdefault.jpg`
+              }
+              className="w-14 h-14 rounded-lg object-cover"
             />
 
             <div className="flex-1">
-              <p className="font-bold text-sm">{song.title}</p>
-              <p className="text-xs text-zinc-400">{song.artist}</p>
+              <p className="font-bold text-sm">
+                {song.title}
+              </p>
+
+              <p className="text-xs text-zinc-400">
+                {song.artist}
+              </p>
             </div>
 
             <button
               onClick={() => handleAddSong(song)}
-              className="px-4 py-2 bg-cyan-500 text-black rounded-lg"
+              className="px-4 py-2 bg-cyan-500 text-black rounded-lg font-bold"
             >
               +
             </button>

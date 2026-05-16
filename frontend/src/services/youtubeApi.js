@@ -1,23 +1,34 @@
-import axios from "axios"
+const API_KEY = import.meta.env.VITE_YOUTUBE_API_KEY
 
-const API_URL = import.meta.env.VITE_API_URL
+export async function searchYouTube(query) {
 
-if (!API_URL) {
-  throw new Error("VITE_API_URL no está definida")
-}
-
-export const searchYouTube = async (query) => {
   if (!query) return []
 
   try {
-    const res = await axios.get(`${API_URL}/search`, {
-      params: { q: query }
-    })
 
-    return res.data
+    const url =
+      `https://www.googleapis.com/youtube/v3/search` +
+      `?part=snippet` +
+      `&maxResults=10` +
+      `&type=video` +
+      `&q=${encodeURIComponent(query)}` +
+      `&key=${API_KEY}`
+
+    const res = await fetch(url)
+
+    const data = await res.json()
+
+    if (!data.items) return []
+
+    return data.items.map((item) => ({
+      youtubeId: item.id.videoId,
+      title: item.snippet.title,
+      artist: item.snippet.channelTitle,
+      thumbnail: item.snippet.thumbnails.medium.url,
+    }))
 
   } catch (err) {
-    console.error("YOUTUBE SEARCH ERROR:", err?.response?.data || err.message)
+    console.error(err)
     return []
   }
 }

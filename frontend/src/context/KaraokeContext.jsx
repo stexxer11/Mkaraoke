@@ -3,12 +3,9 @@ import {
   useContext,
   useEffect,
   useState,
-  useRef
 } from "react"
 
 import { supabase } from "../lib/supabase"
-import { loginWithGoogle, logout } from "../services/auth"
-import { getUserProfile } from "../services/users"
 
 const KaraokeContext = createContext()
 
@@ -16,159 +13,275 @@ export function KaraokeProvider({ children }) {
 
   const [session, setSession] = useState(null)
   const [user, setUser] = useState(null)
+
+  const [queue, setQueue] = useState([])
+  const [currentSong, setCurrentSong] = useState(null)
+
   const [loading, setLoading] = useState(true)
-  const [profileLoading, setProfileLoading] = useState(false)
 
-  const initDone = useRef(false)
+  // =====================================================
+  // AUTH
+  // =====================================================
 
-  // =========================
-  // CREATE OR UPDATE USER
-  // =========================
-  const upsertUser = async (authUser) => {
+  async function loginWithGoogle() {
 
-    if (!authUser?.id) return null
+    await supabase.auth.signInWithOAuth({
+      provider: "google",
+    })
+  }
+
+  async function logout() {
+    await supabase.auth.signOut()
+  }
+
+  // =====================================================
+  // LOAD SONGS
+  // =====================================================
+
+  async function loadSongs() {
 
     const { data, error } = await supabase
-      .from("users")
-      .upsert({
-        id: authUser.id,
-        email: authUser.email,
-        artist_name: authUser.user_metadata?.name || null,
-        avatar_url: authUser.user_metadata?.avatar_url || null
-      })
-      .select()
-      .single()
+      .from("songs")
+      .select("*")
+      .order("position", { ascending: true })
+      .order("created_at", { ascending: true })
 
     if (error) {
-      console.error("UPSERT USER ERROR:", error)
-      return null
+      console.error(error)
+      return
     }
 
-    return data
+    const playing =
+      data.find((s) => s.status === "playing") || null
+
+    const queued =
+      data.filter((s) => s.status === "queued")
+
+    setCurrentSong(playing)
+    setQueue(queued)
   }
 
-  // =========================
-  // LOAD PROFILE
-  // =========================
-  const loadProfile = async (authUser) => {
+  // =====================================================
+  // ADD SONG
+  // =====================================================
 
-    if (!authUser?.id) return
+  async function addSong(song) {
 
-    try {
-      setProfileLoading(true)
+    if (!user) return
 
-      let profile = await getUserProfile(authUser.id)
-
-      // si no existe → lo creamos
-      if (!profile) {
-        profile = await upsertUser(authUser)
-      }
-
-      setUser(profile)
-
-    } catch (err) {
-      console.error("PROFILE ERROR:", err)
-      setUser(null)
-
-    } finally {
-      setProfileLoading(false)
-    }
-  }
-
-  // =========================
-  // INIT AUTH
-  // =========================
-  useEffect(() => {
-
-    let mounted = true
-
-    const init = async () => {
-
-      const { data } = await supabase.auth.getSession()
-      const session = data?.session || null
-
-      if (!mounted) return
-
-      setSession(session)
-
-      if (session?.user && !initDone.current) {
-        initDone.current = true
-        await loadProfile(session.user)
-      }
-
-      setLoading(false)
-    }
-
-    init()
-
-    // =========================
-    // AUTH CHANGE
-    // =========================
-    const { data: listener } =
-      supabase.auth.onAuthStateChange(async (_, newSession) => {
-
-        setSession(newSession)
-
-        if (newSession?.user) {
-          await loadProfile(newSession.user)
-        } else {
-          setUser(null)
-        }
-
+    const { error } = await supabase
+      .from("songs")
+      .insert({
+        user_id: user.id,
+        youtube_id: song.youtubeId,
+        title: song.title,
+        artist: song.artist,
+        thumbnail: song.thumbnail,
+        status: "queued",
       })
 
-    return () => {
-      mounted = false
-      listener.subscription.unsubscribe()
+    if (error) {
+      console.error(error)
+    }
+  }
+
+  // =====================================================
+  // REMOVE SONG
+  // =====================================================
+
+  async function removeSongById(id) {
+
+    await supabase
+      .from("songs")
+      .delete()
+      .eq("id", id)
+  }
+
+  // =====================================================
+  // PLAY NOW
+  // =====================================================
+
+  async function playNow(id) {
+
+    await supabase
+      .from("songs")
+      .update({
+        status: "queued"
+      })
+      .eq("status", "playing")
+
+    await supabase
+      .from("songs")
+      .update({
+        status: "playing"
+      })
+      .eq("id", id)
+  }
+
+  // =====================================================
+  // NEXT SONG
+  // =====================================================
+
+  async function playNextSong() {
+
+    if (currentSong) {
+      await supabase
+        .from("songs")
+        .delete()
+        .eq("id", currentSong.id)
     }
 
-  }, [])
+    const next = queue[0]
 
-  // =========================
-  // SET ARTIST NAME
-  // =========================
+    if (!next) {
+      setCurrentSong(null)
+      return
+    }
+
+    await playNow(next.id)
+  }
+
+  // =====================================================
+  // ARTIST NAME
+  // =====================================================
+
   async function setArtistName(name) {
 
     if (!session?.user) return
 
+    const payload = {
+      id: session.user.id,
+      email: session.user.email,
+      artist_name: name,
+      avatar_url:
+        session.user.user_metadata?.avatar_url || null,
+    }
+
     const { data, error } = await supabase
       .from("users")
-      .update({
-        artist_name: name
-      })
-      .eq("id", session.user.id)
+      .upsert(payload)
       .select()
       .single()
 
     if (error) {
-      console.error("SET ARTIST ERROR:", error)
-      throw error
+      console.error(error)
+      return
     }
 
     setUser(data)
-    return data
   }
 
-  // =========================
-  // REFRESH PROFILE
-  // =========================
-  async function refreshProfile() {
-    if (!session?.user) return
-    await loadProfile(session.user)
-  }
+  // =====================================================
+  // INIT
+  // =====================================================
+
+  useEffect(() => {
+
+    supabase.auth.getSession().then(async ({ data }) => {
+
+      setSession(data.session)
+
+      if (data.session?.user) {
+
+        const authUser = data.session.user
+
+        const { data: profile } = await supabase
+          .from("users")
+          .select("*")
+          .eq("id", authUser.id)
+          .single()
+
+        setUser(profile)
+      }
+
+      setLoading(false)
+    })
+
+    const {
+      data: authListener
+    } = supabase.auth.onAuthStateChange(
+      async (_, session) => {
+
+        setSession(session)
+
+        if (session?.user) {
+
+          const authUser = session.user
+
+          const { data: profile } = await supabase
+            .from("users")
+            .select("*")
+            .eq("id", authUser.id)
+            .single()
+
+          setUser(profile)
+
+        } else {
+          setUser(null)
+        }
+      }
+    )
+
+    return () => {
+      authListener.subscription.unsubscribe()
+    }
+
+  }, [])
+
+  // =====================================================
+  // REALTIME
+  // =====================================================
+
+  useEffect(() => {
+
+    loadSongs()
+
+    const channel = supabase
+      .channel("songs-realtime")
+
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "songs",
+        },
+        () => {
+          loadSongs()
+        }
+      )
+
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+
+  }, [])
 
   return (
-    <KaraokeContext.Provider value={{
-      session,
-      user,
-      loading,
-      profileLoading,
+    <KaraokeContext.Provider
+      value={{
 
-      loginWithGoogle,
-      logout,
-      setArtistName,
-      refreshProfile
-    }}>
+        session,
+        user,
+        loading,
+
+        queue,
+        currentSong,
+
+        loginWithGoogle,
+        logout,
+
+        addSong,
+        removeSongById,
+
+        playNow,
+        playNextSong,
+
+        setArtistName,
+      }}
+    >
       {children}
     </KaraokeContext.Provider>
   )
