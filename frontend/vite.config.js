@@ -11,7 +11,7 @@ export default defineConfig({
 
   build: {
     outDir: "dist",      // Render necesita esto
-    sourcemap: false,    // más rápido en producción
+    sourcemap: false,    // más rápido en producc
   },
 
   preview: {
