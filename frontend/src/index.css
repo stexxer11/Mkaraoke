@@ -1,0 +1,235 @@
+/* =====================================================
+   TAILWIND BASE
+===================================================== */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* =====================================================
+   RESET GLOBAL
+===================================================== */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+}
+
+body {
+  margin: 0;
+  background: radial-gradient(circle at top, #0a0a0a 0%, #050505 60%, #000 100%);
+  color: white;
+  overflow-x: hidden;
+}
+
+/* =====================================================
+   SCROLL
+===================================================== */
+::-webkit-scrollbar {
+  width: 0px;
+}
+
+/* =====================================================
+   ANIMATIONS
+===================================================== */
+@keyframes videoDrop {
+  0% {
+    transform: translateY(-100%);
+    opacity: 0;
+  }
+  100% {
+    transform: translateY(0%);
+    opacity: 1;
+  }
+}
+
+/* =====================================================
+   EFFECTS / UTILITIES
+===================================================== */
+
+.glass {
+  background: rgba(255, 255, 255, 0.04);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.glow-cyan {
+  box-shadow: 0 0 20px rgba(6, 182, 212, 0.25);
+}
+
+.tap {
+  transition: transform 0.15s ease;
+}
+
+.tap:active {
+  transform: scale(0.97);
+}
+
+/* =====================================================
+   SWEETALERT FIX
+===================================================== */
+
+.swal-mobile {
+  width: 100% !important;
+  height: 100vh !important;
+  border-radius: 0 !important;
+}
+
+.edit-modal {
+  border-radius: 18px !important;
+  border: 1px solid rgba(255,255,255,0.08) !important;
+}
+
+.swal2-html-container {
+  overflow: hidden !important;
+}
+
+.swal2-popup {
+  width: 92% !important;
+  max-width: 420px !important;
+}
+
+.swal2-backdrop-show {
+  background: rgba(0,0,0,0.75) !important;
+}
+
+body.swal2-shown {
+  overflow: hidden !important;
+}
+
+/* =====================================================
+   MOBILE UI
+===================================================== */
+
+.mobile {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: #000;
+}
+
+.mobile-header {
+  padding: 18px;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+  backdrop-filter: blur(12px);
+  background: rgba(9, 9, 11, 0.85);
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  text-align: center;
+}
+
+.mobile-title {
+  font-size: 28px;
+  font-weight: 900;
+  color: #22d3ee;
+}
+
+.mobile-subtitle {
+  color: #71717a;
+  font-size: 14px;
+  margin-top: 4px;
+}
+
+.mobile-search {
+  padding: 16px;
+}
+
+.mobile-input {
+  width: 100%;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid #27272a;
+  background: #0a0a0a;
+  color: white;
+  outline: none;
+}
+
+.mobile-input:focus {
+  border-color: #22d3ee;
+}
+
+.mobile-results {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.song-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: #0a0a0a;
+  border: 1px solid #27272a;
+  padding: 10px;
+  border-radius: 14px;
+}
+
+.song-thumb img {
+  width: 70px;
+  height: 50px;
+  border-radius: 8px;
+  object-fit: cover;
+}
+
+.song-info {
+  flex: 1;
+}
+
+.song-title {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.song-artist {
+  font-size: 12px;
+  color: #a1a1aa;
+}
+
+.song-btn {
+  background: #22d3ee;
+  border: none;
+  color: black;
+  font-weight: 900;
+  padding: 8px 12px;
+  border-radius: 10px;
+}
+
+.song-btn:hover {
+  background: #06b6d4;
+}
+
+.mobile-footer {
+  padding: 12px;
+  text-align: center;
+  color: #71717a;
+  font-size: 12px;
+  border-top: 1px solid rgba(255,255,255,0.08);
+}
+
+/* =====================================================
+   ADMIN UI
+===================================================== */
+
+.queue-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: #0a0a0a;
+  border: 1px solid #27272a;
+  padding: 12px;
+  border-radius: 14px;
+  margin-bottom: 10px;
+}
+/* =====================================================
+   HELPERS
+===================================================== */
+
+.text-center { text-align: center; }
+.hidden { display: none; }
+.flex { display: flex; }
+.gap-10 { gap: 10px; }
+.rounded-xl { border-radius: 12px; }
