@@ -11,6 +11,10 @@ const KaraokeContext = createContext()
 
 export function KaraokeProvider({ children }) {
 
+  // =====================================================
+  // STATE
+  // =====================================================
+
   const [session, setSession] = useState(null)
   const [user, setUser] = useState(null)
 
@@ -20,18 +24,38 @@ export function KaraokeProvider({ children }) {
   const [loading, setLoading] = useState(true)
 
   // =====================================================
-  // AUTH
+  // LOGIN
   // =====================================================
 
   async function loginWithGoogle() {
 
-    await supabase.auth.signInWithOAuth({
-      provider: "google",
-    })
+    const { error } =
+      await supabase.auth.signInWithOAuth({
+
+        provider: "google",
+
+        options: {
+          redirectTo: window.location.origin,
+        },
+      })
+
+    if (error) {
+      console.error("LOGIN ERROR:", error)
+    }
   }
 
+  // =====================================================
+  // LOGOUT
+  // =====================================================
+
   async function logout() {
-    await supabase.auth.signOut()
+
+    const { error } =
+      await supabase.auth.signOut()
+
+    if (error) {
+      console.error("LOGOUT ERROR:", error)
+    }
   }
 
   // =====================================================
@@ -47,7 +71,7 @@ export function KaraokeProvider({ children }) {
       .order("created_at", { ascending: true })
 
     if (error) {
-      console.error(error)
+      console.error("LOAD SONGS ERROR:", error)
       return
     }
 
@@ -81,7 +105,7 @@ export function KaraokeProvider({ children }) {
       })
 
     if (error) {
-      console.error(error)
+      console.error("ADD SONG ERROR:", error)
     }
   }
 
@@ -91,10 +115,14 @@ export function KaraokeProvider({ children }) {
 
   async function removeSongById(id) {
 
-    await supabase
+    const { error } = await supabase
       .from("songs")
       .delete()
       .eq("id", id)
+
+    if (error) {
+      console.error("REMOVE SONG ERROR:", error)
+    }
   }
 
   // =====================================================
@@ -106,14 +134,14 @@ export function KaraokeProvider({ children }) {
     await supabase
       .from("songs")
       .update({
-        status: "queued"
+        status: "queued",
       })
       .eq("status", "playing")
 
     await supabase
       .from("songs")
       .update({
-        status: "playing"
+        status: "playing",
       })
       .eq("id", id)
   }
@@ -125,6 +153,7 @@ export function KaraokeProvider({ children }) {
   async function playNextSong() {
 
     if (currentSong) {
+
       await supabase
         .from("songs")
         .delete()
@@ -157,14 +186,17 @@ export function KaraokeProvider({ children }) {
         session.user.user_metadata?.avatar_url || null,
     }
 
-    const { data, error } = await supabase
+    const {
+      data,
+      error,
+    } = await supabase
       .from("users")
       .upsert(payload)
       .select()
-      .single()
+      .maybeSingle()
 
     if (error) {
-      console.error(error)
+      console.error("ARTIST NAME ERROR:", error)
       return
     }
 
@@ -172,167 +204,180 @@ export function KaraokeProvider({ children }) {
   }
 
   // =====================================================
-  // INIT
+  // CREATE / LOAD PROFILE
   // =====================================================
-useEffect(() => {
 
-  let mounted = true
-
-  async function initialize() {
+  async function loadProfile(authUser) {
 
     try {
 
+      const payload = {
+        id: authUser.id,
+        email: authUser.email,
+        artist_name: null,
+        avatar_url:
+          authUser.user_metadata?.avatar_url || null,
+      }
+
       const {
-        data: { session },
-      } = await supabase.auth.getSession()
+        error: upsertError,
+      } = await supabase
+        .from("users")
+        .upsert(payload)
 
-      if (!mounted) return
+      console.log("UPSERT ERROR:", upsertError)
 
-      setSession(session)
+      const {
+        data: profile,
+        error: profileError,
+      } = await supabase
+        .from("users")
+        .select("*")
+        .eq("id", authUser.id)
+        .maybeSingle()
 
-      if (session?.user) {
+      console.log("PROFILE:", profile)
+      console.log("PROFILE ERROR:", profileError)
 
-        const authUser = session.user
+      if (profile) {
 
-        // =========================================
-        // CREATE PROFILE IF NOT EXISTS
-        // =========================================
+        setUser(profile)
 
-        const payload = {
+      } else {
+
+        setUser({
           id: authUser.id,
           email: authUser.email,
           artist_name: null,
           avatar_url:
             authUser.user_metadata?.avatar_url || null,
-        }
-
-        await supabase
-          .from("users")
-          .upsert(payload)
-
-        // =========================================
-        // LOAD PROFILE
-        // =========================================
-
-        const {
-          data: profile,
-          error,
-        } = await supabase
-          .from("users")
-          .select("*")
-          .eq("id", authUser.id)
-          .maybeSingle()
-
-        console.log("PROFILE:", profile)
-        console.log("PROFILE ERROR:", error)
-
-        if (!mounted) return
-
-        if (profile) {
-
-          setUser(profile)
-
-        } else {
-
-          setUser({
-            id: authUser.id,
-            email: authUser.email,
-            artist_name: null,
-            avatar_url:
-              authUser.user_metadata?.avatar_url || null,
-          })
-        }
-
-      } else {
-
-        setUser(null)
+        })
       }
+
+      await loadSongs()
 
     } catch (err) {
 
-      console.error("INIT ERROR:", err)
-
-    } finally {
-
-      if (mounted) {
-        setLoading(false)
-      }
+      console.error("LOAD PROFILE ERROR:", err)
     }
   }
 
-  initialize()
+  // =====================================================
+  // INIT
+  // =====================================================
 
-  // =========================================
-  // AUTH LISTENER
-  // =========================================
+  useEffect(() => {
 
-  const {
-    data: authListener
-  } = supabase.auth.onAuthStateChange(
-    async (event, session) => {
+    let mounted = true
 
-      console.log("AUTH EVENT:", event)
+    async function initialize() {
 
-      setSession(session)
-
-      if (session?.user) {
-
-        const authUser = session.user
-
-        const payload = {
-          id: authUser.id,
-          email: authUser.email,
-          artist_name: null,
-          avatar_url:
-            authUser.user_metadata?.avatar_url || null,
-        }
-
-        await supabase
-          .from("users")
-          .upsert(payload)
+      try {
 
         const {
-          data: profile,
-          error,
-        } = await supabase
-          .from("users")
-          .select("*")
-          .eq("id", authUser.id)
-          .maybeSingle()
+          data: { session },
+        } = await supabase.auth.getSession()
 
-        console.log("PROFILE:", profile)
-        console.log("PROFILE ERROR:", error)
+        console.log("INITIAL SESSION:", session)
 
-        if (profile) {
+        if (!mounted) return
 
-          setUser(profile)
+        setSession(session)
+
+        if (session?.user) {
+
+          await loadProfile(session.user)
 
         } else {
 
-          setUser({
-            id: authUser.id,
-            email: authUser.email,
-            artist_name: null,
-            avatar_url:
-              authUser.user_metadata?.avatar_url || null,
-          })
+          setUser(null)
         }
 
-      } else {
+      } catch (err) {
 
-        setUser(null)
+        console.error("INIT ERROR:", err)
+
+      } finally {
+
+        if (mounted) {
+          setLoading(false)
+        }
       }
     }
-  )
 
-  return () => {
+    initialize()
 
-    mounted = false
+    // =================================================
+    // AUTH LISTENER
+    // =================================================
 
-    authListener.subscription.unsubscribe()
-  }
+    const {
+      data: authListener,
+    } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
 
-}, [])
+        console.log("AUTH EVENT:", event)
+        console.log("AUTH SESSION:", session)
+
+        setSession(session)
+
+        if (session?.user) {
+
+          await loadProfile(session.user)
+
+        } else {
+
+          setUser(null)
+        }
+      }
+    )
+
+    return () => {
+
+      mounted = false
+
+      authListener.subscription.unsubscribe()
+    }
+
+  }, [])
+
+  // =====================================================
+  // REALTIME
+  // =====================================================
+
+  useEffect(() => {
+
+    const channel = supabase
+
+      .channel("songs-realtime")
+
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "songs",
+        },
+        () => {
+
+          console.log("SONGS UPDATED")
+
+          loadSongs()
+        }
+      )
+
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+
+  }, [])
+
+  // =====================================================
+  // PROVIDER
+  // =====================================================
+
   return (
     <KaraokeContext.Provider
       value={{
