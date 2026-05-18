@@ -194,15 +194,54 @@ useEffect(() => {
 
         const authUser = session.user
 
-        const { data: profile } = await supabase
+        // =========================================
+        // CREATE PROFILE IF NOT EXISTS
+        // =========================================
+
+        const payload = {
+          id: authUser.id,
+          email: authUser.email,
+          artist_name: null,
+          avatar_url:
+            authUser.user_metadata?.avatar_url || null,
+        }
+
+        await supabase
+          .from("users")
+          .upsert(payload)
+
+        // =========================================
+        // LOAD PROFILE
+        // =========================================
+
+        const {
+          data: profile,
+          error,
+        } = await supabase
           .from("users")
           .select("*")
           .eq("id", authUser.id)
-          .single()
+          .maybeSingle()
+
+        console.log("PROFILE:", profile)
+        console.log("PROFILE ERROR:", error)
 
         if (!mounted) return
 
-        setUser(profile)
+        if (profile) {
+
+          setUser(profile)
+
+        } else {
+
+          setUser({
+            id: authUser.id,
+            email: authUser.email,
+            artist_name: null,
+            avatar_url:
+              authUser.user_metadata?.avatar_url || null,
+          })
+        }
 
       } else {
 
@@ -211,7 +250,7 @@ useEffect(() => {
 
     } catch (err) {
 
-      console.error(err)
+      console.error("INIT ERROR:", err)
 
     } finally {
 
@@ -222,6 +261,10 @@ useEffect(() => {
   }
 
   initialize()
+
+  // =========================================
+  // AUTH LISTENER
+  // =========================================
 
   const {
     data: authListener
@@ -236,13 +279,44 @@ useEffect(() => {
 
         const authUser = session.user
 
-        const { data: profile } = await supabase
+        const payload = {
+          id: authUser.id,
+          email: authUser.email,
+          artist_name: null,
+          avatar_url:
+            authUser.user_metadata?.avatar_url || null,
+        }
+
+        await supabase
+          .from("users")
+          .upsert(payload)
+
+        const {
+          data: profile,
+          error,
+        } = await supabase
           .from("users")
           .select("*")
           .eq("id", authUser.id)
-          .single()
+          .maybeSingle()
 
-        setUser(profile)
+        console.log("PROFILE:", profile)
+        console.log("PROFILE ERROR:", error)
+
+        if (profile) {
+
+          setUser(profile)
+
+        } else {
+
+          setUser({
+            id: authUser.id,
+            email: authUser.email,
+            artist_name: null,
+            avatar_url:
+              authUser.user_metadata?.avatar_url || null,
+          })
+        }
 
       } else {
 
@@ -259,37 +333,6 @@ useEffect(() => {
   }
 
 }, [])
-  // =====================================================
-  // REALTIME
-  // =====================================================
-
-  useEffect(() => {
-
-    loadSongs()
-
-    const channel = supabase
-      .channel("songs-realtime")
-
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "songs",
-        },
-        () => {
-          loadSongs()
-        }
-      )
-
-      .subscribe()
-
-    return () => {
-      supabase.removeChannel(channel)
-    }
-
-  }, [])
-
   return (
     <KaraokeContext.Provider
       value={{
