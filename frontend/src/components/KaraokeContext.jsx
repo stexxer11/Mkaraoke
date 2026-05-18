@@ -174,16 +174,67 @@ export function KaraokeProvider({ children }) {
   // =====================================================
   // INIT
   // =====================================================
+useEffect(() => {
 
-  useEffect(() => {
+  let mounted = true
 
-    supabase.auth.getSession().then(async ({ data }) => {
+  async function initialize() {
 
-      setSession(data.session)
+    try {
 
-      if (data.session?.user) {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession()
 
-        const authUser = data.session.user
+      if (!mounted) return
+
+      setSession(session)
+
+      if (session?.user) {
+
+        const authUser = session.user
+
+        const { data: profile } = await supabase
+          .from("users")
+          .select("*")
+          .eq("id", authUser.id)
+          .single()
+
+        if (!mounted) return
+
+        setUser(profile)
+
+      } else {
+
+        setUser(null)
+      }
+
+    } catch (err) {
+
+      console.error(err)
+
+    } finally {
+
+      if (mounted) {
+        setLoading(false)
+      }
+    }
+  }
+
+  initialize()
+
+  const {
+    data: authListener
+  } = supabase.auth.onAuthStateChange(
+    async (event, session) => {
+
+      console.log("AUTH EVENT:", event)
+
+      setSession(session)
+
+      if (session?.user) {
+
+        const authUser = session.user
 
         const { data: profile } = await supabase
           .from("users")
@@ -192,42 +243,22 @@ export function KaraokeProvider({ children }) {
           .single()
 
         setUser(profile)
+
+      } else {
+
+        setUser(null)
       }
-
-      setLoading(false)
-    })
-
-    const {
-      data: authListener
-    } = supabase.auth.onAuthStateChange(
-      async (_, session) => {
-
-        setSession(session)
-
-        if (session?.user) {
-
-          const authUser = session.user
-
-          const { data: profile } = await supabase
-            .from("users")
-            .select("*")
-            .eq("id", authUser.id)
-            .single()
-
-          setUser(profile)
-
-        } else {
-          setUser(null)
-        }
-      }
-    )
-
-    return () => {
-      authListener.subscription.unsubscribe()
     }
+  )
 
-  }, [])
+  return () => {
 
+    mounted = false
+
+    authListener.subscription.unsubscribe()
+  }
+
+}, [])
   // =====================================================
   // REALTIME
   // =====================================================
