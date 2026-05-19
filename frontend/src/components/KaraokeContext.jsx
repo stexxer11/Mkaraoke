@@ -56,6 +56,9 @@ export function KaraokeProvider({ children }) {
     if (error) {
       console.error("LOGOUT ERROR:", error)
     }
+
+    setSession(null)
+    setUser(null)
   }
 
   // =====================================================
@@ -64,25 +67,45 @@ export function KaraokeProvider({ children }) {
 
   async function loadSongs() {
 
-    const { data, error } = await supabase
-      .from("songs")
-      .select("*")
-      .order("position", { ascending: true })
-      .order("created_at", { ascending: true })
+    try {
 
-    if (error) {
-      console.error("LOAD SONGS ERROR:", error)
-      return
+      console.log("LOADING SONGS")
+
+      const {
+        data,
+        error,
+      } = await supabase
+        .from("songs")
+        .select("*")
+        .order("created_at", {
+          ascending: true,
+        })
+
+      console.log("SONGS:", data)
+      console.log("SONGS ERROR:", error)
+
+      if (error) return
+
+      const playing =
+        data.find(
+          (s) => s.status === "playing"
+        ) || null
+
+      const queued =
+        data.filter(
+          (s) => s.status === "queued"
+        )
+
+      setCurrentSong(playing)
+      setQueue(queued)
+
+    } catch (err) {
+
+      console.error(
+        "LOAD SONGS CRASH:",
+        err
+      )
     }
-
-    const playing =
-      data.find((s) => s.status === "playing") || null
-
-    const queued =
-      data.filter((s) => s.status === "queued")
-
-    setCurrentSong(playing)
-    setQueue(queued)
   }
 
   // =====================================================
@@ -105,7 +128,10 @@ export function KaraokeProvider({ children }) {
       })
 
     if (error) {
-      console.error("ADD SONG ERROR:", error)
+      console.error(
+        "ADD SONG ERROR:",
+        error
+      )
     }
   }
 
@@ -121,7 +147,10 @@ export function KaraokeProvider({ children }) {
       .eq("id", id)
 
     if (error) {
-      console.error("REMOVE SONG ERROR:", error)
+      console.error(
+        "REMOVE SONG ERROR:",
+        error
+      )
     }
   }
 
@@ -163,6 +192,7 @@ export function KaraokeProvider({ children }) {
     const next = queue[0]
 
     if (!next) {
+
       setCurrentSong(null)
       return
     }
@@ -176,90 +206,10 @@ export function KaraokeProvider({ children }) {
 
   async function setArtistName(name) {
 
-    if (!session?.user) return
-
-    const payload = {
-      id: session.user.id,
-      email: session.user.email,
+    setUser((prev) => ({
+      ...prev,
       artist_name: name,
-      avatar_url:
-        session.user.user_metadata?.avatar_url || null,
-    }
-
-    const {
-      data,
-      error,
-    } = await supabase
-      .from("users")
-      .upsert(payload)
-      .select()
-      .maybeSingle()
-
-    if (error) {
-      console.error("ARTIST NAME ERROR:", error)
-      return
-    }
-
-    setUser(data)
-  }
-
-  // =====================================================
-  // CREATE / LOAD PROFILE
-  // =====================================================
-
-  async function loadProfile(authUser) {
-
-    try {
-
-      const payload = {
-        id: authUser.id,
-        email: authUser.email,
-        artist_name: null,
-        avatar_url:
-          authUser.user_metadata?.avatar_url || null,
-      }
-
-      const {
-        error: upsertError,
-      } = await supabase
-        .from("users")
-        .upsert(payload)
-
-      console.log("UPSERT ERROR:", upsertError)
-
-      const {
-        data: profile,
-        error: profileError,
-      } = await supabase
-        .from("users")
-        .select("*")
-        .eq("id", authUser.id)
-        .maybeSingle()
-
-      console.log("PROFILE:", profile)
-      console.log("PROFILE ERROR:", profileError)
-
-      if (profile) {
-
-        setUser(profile)
-
-      } else {
-
-        setUser({
-          id: authUser.id,
-          email: authUser.email,
-          artist_name: null,
-          avatar_url:
-            authUser.user_metadata?.avatar_url || null,
-        })
-      }
-
-      await loadSongs()
-
-    } catch (err) {
-
-      console.error("LOAD PROFILE ERROR:", err)
-    }
+    }))
   }
 
   // =====================================================
@@ -278,7 +228,10 @@ export function KaraokeProvider({ children }) {
           data: { session },
         } = await supabase.auth.getSession()
 
-        console.log("INITIAL SESSION:", session)
+        console.log(
+          "INITIAL SESSION:",
+          session
+        )
 
         if (!mounted) return
 
@@ -286,7 +239,27 @@ export function KaraokeProvider({ children }) {
 
         if (session?.user) {
 
-          await loadProfile(session.user)
+          const authUser =
+            session.user
+
+          setUser({
+            id: authUser.id,
+            email: authUser.email,
+
+            artist_name:
+              authUser.user_metadata
+                ?.full_name || null,
+
+            avatar_url:
+              authUser.user_metadata
+                ?.avatar_url || null,
+          })
+
+          // =========================
+          // TEMPORARILY DISABLED
+          // =========================
+
+          // await loadSongs()
 
         } else {
 
@@ -295,7 +268,10 @@ export function KaraokeProvider({ children }) {
 
       } catch (err) {
 
-        console.error("INIT ERROR:", err)
+        console.error(
+          "INIT ERROR:",
+          err
+        )
 
       } finally {
 
@@ -316,18 +292,63 @@ export function KaraokeProvider({ children }) {
     } = supabase.auth.onAuthStateChange(
       async (event, session) => {
 
-        console.log("AUTH EVENT:", event)
-        console.log("AUTH SESSION:", session)
+        console.log(
+          "AUTH EVENT:",
+          event
+        )
 
-        setSession(session)
+        // =====================================
+        // IGNORE EXTRA EVENTS
+        // =====================================
+
+        if (
+          event === "TOKEN_REFRESHED" ||
+          event === "USER_UPDATED"
+        ) {
+          return
+        }
+
+        // =====================================
+        // SIGNED OUT
+        // =====================================
+
+        if (event === "SIGNED_OUT") {
+
+          setSession(null)
+          setUser(null)
+
+          return
+        }
+
+        // =====================================
+        // VALID SESSION
+        // =====================================
 
         if (session?.user) {
 
-          await loadProfile(session.user)
+          setSession(session)
 
-        } else {
+          const authUser =
+            session.user
 
-          setUser(null)
+          setUser({
+            id: authUser.id,
+            email: authUser.email,
+
+            artist_name:
+              authUser.user_metadata
+                ?.full_name || null,
+
+            avatar_url:
+              authUser.user_metadata
+                ?.avatar_url || null,
+          })
+
+          // =========================
+          // TEMPORARILY DISABLED
+          // =========================
+
+          // await loadSongs()
         }
       }
     )
@@ -336,15 +357,18 @@ export function KaraokeProvider({ children }) {
 
       mounted = false
 
-      authListener.subscription.unsubscribe()
+      authListener
+        .subscription
+        .unsubscribe()
     }
 
   }, [])
 
   // =====================================================
-  // REALTIME
+  // REALTIME TEMP DISABLED
   // =====================================================
 
+  /*
   useEffect(() => {
 
     const channel = supabase
@@ -373,6 +397,7 @@ export function KaraokeProvider({ children }) {
     }
 
   }, [])
+  */
 
   // =====================================================
   // PROVIDER
